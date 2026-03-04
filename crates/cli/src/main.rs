@@ -22,5 +22,28 @@ enum Command {
 }
 
 fn main() {
-    let _ = Cli::parse();
+    let cli = Cli::parse();
+    if let Some(command) = cli.command {
+        let stage_name = command.stage_name();
+        if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
+            .into_iter()
+            .find(|(name, _)| *name == stage_name)
+        {
+            println!("stage={stage_name} output={output_dir}");
+        }
+    }
+}
+
+impl Command {
+    fn stage_name(&self) -> &'static str {
+        match self {
+            Command::Fetch => "fetch",
+            Command::Normalize => "normalize",
+            Command::InferLayout => "infer-layout",
+            Command::BuildSpec => "build-spec",
+            Command::GenSwiftui => "gen-swiftui",
+            Command::ExportAssets => "export-assets",
+            Command::Report => "report",
+        }
+    }
 }
