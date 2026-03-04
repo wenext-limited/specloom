@@ -102,6 +102,20 @@ pub fn run_stage(stage_name: &str) -> Result<StageExecutionResult, PipelineError
     run_stage_in_workspace(stage_name, workspace_root.as_path())
 }
 
+pub fn run_all() -> Result<Vec<StageExecutionResult>, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    run_all_in_workspace(workspace_root.as_path())
+}
+
+pub fn run_all_in_workspace(
+    workspace_root: &Path,
+) -> Result<Vec<StageExecutionResult>, PipelineError> {
+    PIPELINE_STAGES
+        .iter()
+        .map(|stage| run_stage_in_workspace(stage.name, workspace_root))
+        .collect()
+}
+
 pub fn run_stage_in_workspace(
     stage_name: &str,
     workspace_root: &Path,
@@ -652,6 +666,67 @@ mod tests {
         assert_eq!(manifest.generation.source_file_key, "fixture-file-key");
 
         let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_all_in_workspace_executes_stages_in_order() {
+        let workspace_root =
+            unique_test_workspace_root("run_all_in_workspace_executes_stages_in_order");
+
+        let results =
+            run_all_in_workspace(workspace_root.as_path()).expect("run-all should succeed");
+        assert_eq!(
+            results
+                .iter()
+                .map(|result| result.stage_name)
+                .collect::<Vec<_>>(),
+            vec![
+                "fetch",
+                "normalize",
+                "infer-layout",
+                "build-spec",
+                "gen-swiftui",
+                "export-assets",
+                "report",
+            ]
+        );
+        assert_eq!(
+            results
+                .last()
+                .and_then(|result| result.artifact_path.clone()),
+            Some("output/reports/review_report.json".to_string())
+        );
+
+        assert!(
+            workspace_root
+                .join("output/reports/review_report.json")
+                .is_file(),
+            "report artifact should exist after run-all"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_all_in_workspace_returns_stage_error() {
+        let blocked_path = std::env::temp_dir().join(format!(
+            "forge-run-all-blocked-path-{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&blocked_path, "blocked").expect("blocked path file should be created");
+
+        let err = run_all_in_workspace(blocked_path.as_path())
+            .expect_err("run-all should fail when workspace root is a file path");
+        assert!(
+            matches!(err, PipelineError::Io(_)),
+            "expected io error, got: {err:?}"
+        );
+
+        let _ = std::fs::remove_file(&blocked_path);
     }
 
     #[test]
