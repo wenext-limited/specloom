@@ -19,17 +19,27 @@ enum Command {
     GenSwiftui,
     ExportAssets,
     Report,
+    Stages,
 }
 
 fn main() {
     let cli = Cli::parse();
     if let Some(command) = cli.command {
-        let stage_name = command.stage_name();
-        if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
-            .into_iter()
-            .find(|(name, _)| *name == stage_name)
-        {
-            println!("stage={stage_name} output={output_dir}");
+        match command {
+            Command::Stages => {
+                for (stage, output) in orchestrator::pipeline_stage_output_dirs() {
+                    println!("stage={stage} output={output}");
+                }
+            }
+            _ => {
+                let stage_name = command.stage_name();
+                if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
+                    .into_iter()
+                    .find(|(name, _)| *name == stage_name)
+                {
+                    println!("stage={stage_name} output={output_dir}");
+                }
+            }
         }
     }
 }
@@ -44,6 +54,7 @@ impl Command {
             Command::GenSwiftui => "gen-swiftui",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
+            Command::Stages => "stages",
         }
     }
 }
