@@ -5,6 +5,7 @@ members = [
   "crates/figma_normalizer",
   "crates/layout_infer",
   "crates/ui_spec",
+  "crates/ui_blueprint",
   "crates/swiftui_ast",
   "crates/swiftui_codegen",
   "crates/asset_pipeline",
