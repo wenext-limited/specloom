@@ -13,6 +13,13 @@ pub enum UiSpec {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         children: Vec<UiSpec>,
     },
+    Instance {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
     Text {
         id: String,
         name: String,
@@ -62,6 +69,7 @@ impl UiSpec {
     pub fn id(&self) -> &str {
         match self {
             Self::Container { id, .. }
+            | Self::Instance { id, .. }
             | Self::Text { id, .. }
             | Self::Image { id, .. }
             | Self::Vector { id, .. } => id.as_str(),
@@ -71,6 +79,7 @@ impl UiSpec {
     pub fn children(&self) -> &[UiSpec] {
         match self {
             Self::Container { children, .. }
+            | Self::Instance { children, .. }
             | Self::Text { children, .. }
             | Self::Image { children, .. }
             | Self::Vector { children, .. } => children.as_slice(),
@@ -80,6 +89,7 @@ impl UiSpec {
     pub fn node_type(&self) -> NodeType {
         match self {
             Self::Container { .. } => NodeType::Container,
+            Self::Instance { .. } => NodeType::Instance,
             Self::Text { .. } => NodeType::Text,
             Self::Image { .. } => NodeType::Image,
             Self::Vector { .. } => NodeType::Vector,
@@ -90,6 +100,7 @@ impl UiSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
     Container,
+    Instance,
     Text,
     Image,
     Vector,
@@ -150,6 +161,11 @@ fn build_ui_spec_node(
             name: node.name.clone(),
             children,
         },
+        NodeType::Instance => UiSpec::Instance {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
         NodeType::Text => UiSpec::Text {
             id: node.id.clone(),
             name: node.name.clone(),
@@ -173,8 +189,8 @@ fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
         figma_normalizer::NodeKind::Frame
         | figma_normalizer::NodeKind::Group
         | figma_normalizer::NodeKind::Component
-        | figma_normalizer::NodeKind::Instance
         | figma_normalizer::NodeKind::ComponentSet => NodeType::Container,
+        figma_normalizer::NodeKind::Instance => NodeType::Instance,
         figma_normalizer::NodeKind::Text => NodeType::Text,
         figma_normalizer::NodeKind::Rectangle
         | figma_normalizer::NodeKind::Ellipse
@@ -492,6 +508,37 @@ mod tests {
         assert_eq!(spec.children().len(), 1);
     }
 
+    #[test]
+    fn build_ui_spec_maps_instance_kind_to_instance() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    container_node("1:1", vec!["2:1".to_string()]),
+                    instance_node("2:1", vec!["3:1".to_string()]),
+                    text_node("3:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.children()[0].node_type(), NodeType::Instance);
+        assert_eq!(spec.children()[0].children().len(), 1);
+        assert_eq!(spec.children()[0].children()[0].node_type(), NodeType::Text);
+    }
+
     fn container_node(id: &str, children: Vec<String>) -> figma_normalizer::NormalizedNode {
         figma_normalizer::NormalizedNode {
             id: id.to_string(),
@@ -632,6 +679,38 @@ mod tests {
             },
             passthrough_fields: std::collections::BTreeMap::new(),
             children: Vec::new(),
+        }
+    }
+
+    fn instance_node(id: &str, children: Vec<String>) -> figma_normalizer::NormalizedNode {
+        figma_normalizer::NormalizedNode {
+            id: id.to_string(),
+            parent_id: None,
+            name: "Button Instance".to_string(),
+            kind: figma_normalizer::NodeKind::Instance,
+            visible: true,
+            bounds: figma_normalizer::Bounds {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 40.0,
+            },
+            layout: None,
+            constraints: None,
+            style: figma_normalizer::NodeStyle {
+                opacity: 1.0,
+                corner_radius: None,
+                fills: Vec::new(),
+                strokes: Vec::new(),
+            },
+            component: figma_normalizer::ComponentMetadata {
+                component_id: None,
+                component_set_id: None,
+                instance_of: Some("42:7".to_string()),
+                variant_properties: Vec::new(),
+            },
+            passthrough_fields: std::collections::BTreeMap::new(),
+            children,
         }
     }
 
