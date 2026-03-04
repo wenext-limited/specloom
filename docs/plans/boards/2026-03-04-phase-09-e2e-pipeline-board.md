@@ -19,7 +19,7 @@
 | [x] | P9-T2 | Add orchestrator run-all API | codex | P9-T1 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `0998183` | Started 2026-03-04 15:49 CST; added sequential run-all execution with ordered results and stage-error boundaries |
 | [x] | P9-T3 | Add CLI generate command | codex | P9-T2 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | `ff679ab` | Started 2026-03-04 15:53 CST; generate now runs full pipeline with deterministic text/json output and stable error exit handling |
 | [x] | P9-T4 | Add fixture e2e generate test | codex | P9-T3 | `crates/cli/tests/fixtures/`, `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | `2da7e19` | Started 2026-03-04 16:00 CST; fixture-driven e2e generate test now verifies all artifact families and report warning summary |
-| [x] | P9-T5 | Add deterministic rerun assertions | codex | P9-T4 | `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | `<pending>` | Started 2026-03-04 16:06 CST; added repeated-run byte-equality assertions for all generated artifact outputs |
+| [x] | P9-T5 | Add deterministic rerun assertions | codex | P9-T4 | `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | `030a6da` | Started 2026-03-04 16:06 CST; added repeated-run byte-equality assertions for all generated artifact outputs |
 | [ ] | P9-T6 | Phase verification and closeout | unassigned | P9-T5 | `docs/plans/boards/2026-03-04-phase-09-e2e-pipeline-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge phase to `main` after pass |
 
 ## Parallelization Rules
