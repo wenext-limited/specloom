@@ -643,6 +643,11 @@ fn maybe_write_root_screenshot(
     root_node_id: &str,
     root_screenshot_ref: &str,
 ) -> Result<(), PipelineError> {
+    let screenshot_path = workspace_root.join(root_screenshot_ref);
+    if screenshot_path.is_file() {
+        return Ok(());
+    }
+
     let live_config = match &config.fetch_mode {
         FetchMode::Live(config) => config,
         _ => return Ok(()),
@@ -675,7 +680,7 @@ fn maybe_write_root_screenshot(
         .bytes()
         .map_err(|err| PipelineError::FetchClient(format!("screenshot download decode error: {err}")))?;
 
-    write_bytes(workspace_root.join(root_screenshot_ref).as_path(), bytes.as_ref())
+    write_bytes(screenshot_path.as_path(), bytes.as_ref())
 }
 
 fn build_skeleton_nodes(root: &ui_spec::UiSpec) -> Vec<agent_context::SkeletonNode> {
@@ -1266,6 +1271,51 @@ mod tests {
             .find(|entry| entry.node_id == "0:1")
             .expect("root entry should exist");
         assert_eq!(root_entry.node_type, "HSTACK");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn build_agent_context_reuses_cached_root_screenshot_when_present() {
+        let workspace_root = unique_test_workspace_root(
+            "build_agent_context_reuses_cached_root_screenshot_when_present",
+        );
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run third");
+
+        let cached_screenshot_path = workspace_root.join("output/images/root_0_1.png");
+        if let Some(parent) = cached_screenshot_path.parent() {
+            std::fs::create_dir_all(parent).expect("cached screenshot parent should be creatable");
+        }
+        let cached_bytes = vec![137, 80, 78, 71, 0, 1, 2, 3];
+        std::fs::write(cached_screenshot_path.as_path(), cached_bytes.as_slice())
+            .expect("cached screenshot should be writable");
+
+        let live_config = PipelineRunConfig {
+            fetch_mode: FetchMode::Live(LiveFetchConfig {
+                file_key: "abc123".to_string(),
+                node_id: "0:1".to_string(),
+                figma_token: "token-from-test".to_string(),
+                api_base_url: Some("http://127.0.0.1:9".to_string()),
+            }),
+        };
+
+        let result = run_stage_in_workspace_with_config(
+            "build-agent-context",
+            workspace_root.as_path(),
+            &live_config,
+        )
+        .expect("build-agent-context should reuse cached screenshot");
+        assert_eq!(result.stage_name, "build-agent-context");
+        assert!(workspace_root.join("output/agent/agent_context.json").is_file());
+
+        let actual_bytes = std::fs::read(cached_screenshot_path.as_path())
+            .expect("cached screenshot should remain readable");
+        assert_eq!(actual_bytes, cached_bytes);
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
