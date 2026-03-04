@@ -99,6 +99,10 @@ fn normalize_node(
         children: Vec::new(),
     });
 
+    if matches!(nodes[node_index].kind, NodeKind::Instance) {
+        return Ok(id);
+    }
+
     let children = parse_children(node.get("children"))?;
     let mut child_ids = Vec::new();
     for child in children {
@@ -604,6 +608,59 @@ mod tests {
         assert_eq!(output.document.nodes[1].children, Vec::<String>::new());
         assert!(output.document.nodes[0].passthrough_fields.is_empty());
         assert!(output.document.nodes[1].passthrough_fields.is_empty());
+    }
+
+    #[test]
+    fn normalize_snapshot_treats_instance_as_leaf_unit() {
+        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+            .expect("request should be valid");
+        let snapshot = figma_client::fetch_snapshot_from_fixture(
+            &request,
+            r#"{
+                "document": {
+                    "id": "1:1",
+                    "name": "Root",
+                    "type": "FRAME",
+                    "visible": true,
+                    "absoluteBoundingBox": { "x": 0.0, "y": 0.0, "width": 390.0, "height": 844.0 },
+                    "children": [
+                        {
+                            "id": "2:1",
+                            "name": "Button Instance",
+                            "type": "INSTANCE",
+                            "visible": true,
+                            "absoluteBoundingBox": { "x": 20.0, "y": 24.0, "width": 140.0, "height": 40.0 },
+                            "children": [
+                                {
+                                    "id": "3:1",
+                                    "name": "Label",
+                                    "type": "TEXT",
+                                    "visible": true,
+                                    "absoluteBoundingBox": { "x": 24.0, "y": 30.0, "width": 80.0, "height": 20.0 },
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }"#,
+        )
+        .expect("fixture should parse");
+
+        let output = super::normalize_snapshot(&snapshot).expect("snapshot should normalize");
+        assert!(output.warnings.is_empty());
+        assert_eq!(
+            output
+                .document
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1:1", "2:1"]
+        );
+        assert_eq!(output.document.nodes[0].children, vec!["2:1".to_string()]);
+        assert_eq!(output.document.nodes[1].kind, NodeKind::Instance);
+        assert_eq!(output.document.nodes[1].children, Vec::<String>::new());
     }
 
     #[test]
