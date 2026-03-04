@@ -127,8 +127,10 @@ dependencies = [
 name = "figma_normalizer"
 version = "0.1.0"
 dependencies = [
+ "figma_client",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
