@@ -8,6 +8,7 @@ agent_context = { path = "../agent_context" }
 asset_pipeline = { path = "../asset_pipeline" }
 figma_client = { path = "../figma_client" }
 figma_normalizer = { path = "../figma_normalizer" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 ron = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

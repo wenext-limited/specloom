@@ -421,7 +421,7 @@ pub fn run_stage_in_workspace_with_config(
         "fetch" => Some(run_fetch_stage(workspace_root, &config.fetch_mode)?),
         "normalize" => Some(run_normalize_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
-        "build-agent-context" => Some(run_build_agent_context_stage(workspace_root)?),
+        "build-agent-context" => Some(run_build_agent_context_stage(workspace_root, config)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
         _ => None,
     };
@@ -592,18 +592,22 @@ fn generate_transform_plan(
     Ok(ui_spec::TransformPlan::default())
 }
 
-fn run_build_agent_context_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+fn run_build_agent_context_stage(
+    workspace_root: &Path,
+    config: &PipelineRunConfig,
+) -> Result<String, PipelineError> {
     let spec = read_required_ron::<ui_spec::UiSpec>(workspace_root, SPEC_ARTIFACT_RELATIVE_PATH)?;
 
     let root_node_id = spec.id().to_string();
+    let root_screenshot_ref = format!("output/images/root_{}.png", root_node_id.replace(':', "_"));
+
+    maybe_write_root_screenshot(workspace_root, config, root_node_id.as_str(), root_screenshot_ref.as_str())?;
+
     let context = agent_context::AgentContext {
         version: "agent_context/1.0".to_string(),
         screen: agent_context::ScreenRef {
             root_node_id: root_node_id.clone(),
-            root_screenshot_ref: format!(
-                "output/images/root_{}.png",
-                root_node_id.replace(':', "_")
-            ),
+            root_screenshot_ref,
         },
         rules: agent_context::GenerationRules {
             on_node_mismatch: "warn_and_continue".to_string(),
@@ -631,6 +635,47 @@ fn run_build_agent_context_stage(workspace_root: &Path) -> Result<String, Pipeli
     write_bytes(index_path.as_path(), index_bytes.as_slice())?;
 
     Ok(normalize_result_path(workspace_root, context_path.as_path()))
+}
+
+fn maybe_write_root_screenshot(
+    workspace_root: &Path,
+    config: &PipelineRunConfig,
+    root_node_id: &str,
+    root_screenshot_ref: &str,
+) -> Result<(), PipelineError> {
+    let live_config = match &config.fetch_mode {
+        FetchMode::Live(config) => config,
+        _ => return Ok(()),
+    };
+
+    let request = figma_client::LiveScreenshotRequest::new(
+        live_config.file_key.clone(),
+        root_node_id.to_string(),
+        live_config.figma_token.clone(),
+        live_config.api_base_url.clone(),
+    )
+    .map_err(fetch_client_error)?;
+    let screenshot = figma_client::fetch_node_screenshot_live(&request).map_err(fetch_client_error)?;
+
+    let response = reqwest::blocking::Client::new()
+        .get(screenshot.image_url.as_str())
+        .send()
+        .map_err(|err| PipelineError::FetchClient(format!("screenshot download transport error: {err}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response
+            .text()
+            .unwrap_or_else(|_| "response body unavailable".to_string());
+        return Err(PipelineError::FetchClient(format!(
+            "screenshot download returned non-success status {}: {body}",
+            status.as_u16()
+        )));
+    }
+    let bytes = response
+        .bytes()
+        .map_err(|err| PipelineError::FetchClient(format!("screenshot download decode error: {err}")))?;
+
+    write_bytes(workspace_root.join(root_screenshot_ref).as_path(), bytes.as_ref())
 }
 
 fn build_skeleton_nodes(root: &ui_spec::UiSpec) -> Vec<agent_context::SkeletonNode> {

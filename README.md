@@ -74,6 +74,10 @@ Within `build-spec`, artifacts are produced in this order:
 3. `transform_plan.json` (agent decisions with `child_policy`)
 4. `ui_spec.ron` (final transformed spec consumed downstream)
 
+For live `generate` runs, `build-agent-context` also downloads the root-node screenshot to:
+
+1. `output/images/root_<node_id_with_colon_replaced_by_underscore>.png`
+
 ## CLI Commands
 
 List stage output directories:
