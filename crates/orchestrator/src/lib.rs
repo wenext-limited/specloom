@@ -577,8 +577,7 @@ mod tests {
         let artifact_path = workspace_root.join("output/specs/ui_spec.ron");
         assert!(artifact_path.is_file());
         let artifact = std::fs::read_to_string(artifact_path).expect("spec should be readable");
-        assert!(artifact.contains("Node("));
-        assert!(artifact.contains("type: Container"));
+        assert!(artifact.contains("Container("));
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }

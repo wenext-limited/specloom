@@ -5,22 +5,41 @@ use std::collections::BTreeMap;
 pub const UI_SPEC_VERSION: &str = "2.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename = "Node")]
-pub struct UiSpec {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub node_type: NodeType,
-    pub name: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub children: Vec<UiSpec>,
+pub enum UiSpec {
+    Container {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    Text {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    Image {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    Vector {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
 }
 
 impl Default for UiSpec {
     fn default() -> Self {
-        Self {
+        Self::Container {
             id: String::new(),
-            node_type: NodeType::Container,
             name: String::new(),
             children: Vec::new(),
         }
@@ -39,9 +58,36 @@ impl UiSpec {
     pub fn to_pretty_ron(&self) -> Result<String, ron::Error> {
         ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::new().struct_names(true))
     }
+
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Container { id, .. }
+            | Self::Text { id, .. }
+            | Self::Image { id, .. }
+            | Self::Vector { id, .. } => id.as_str(),
+        }
+    }
+
+    pub fn children(&self) -> &[UiSpec] {
+        match self {
+            Self::Container { children, .. }
+            | Self::Text { children, .. }
+            | Self::Image { children, .. }
+            | Self::Vector { children, .. } => children.as_slice(),
+        }
+    }
+
+    pub fn node_type(&self) -> NodeType {
+        match self {
+            Self::Container { .. } => NodeType::Container,
+            Self::Text { .. } => NodeType::Text,
+            Self::Image { .. } => NodeType::Image,
+            Self::Vector { .. } => NodeType::Vector,
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
     Container,
     Text,
@@ -93,11 +139,28 @@ fn build_ui_spec_node(
         .map(|child_id| build_ui_spec_node(child_id.as_str(), nodes_by_id))
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(UiSpec {
-        id: node.id.clone(),
-        node_type: map_node_type(node)?,
-        name: node.name.clone(),
-        children,
+    let node_type = map_node_type(node)?;
+    Ok(match node_type {
+        NodeType::Container => UiSpec::Container {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::Text => UiSpec::Text {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::Image => UiSpec::Image {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::Vector => UiSpec::Vector {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
     })
 }
 
@@ -138,13 +201,11 @@ mod tests {
 
     #[test]
     fn ui_spec_round_trip() {
-        let spec = UiSpec {
+        let spec = UiSpec::Container {
             id: "1:1".to_string(),
-            node_type: NodeType::Container,
             name: "Root".to_string(),
-            children: vec![UiSpec {
+            children: vec![UiSpec::Text {
                 id: "1:2".to_string(),
-                node_type: NodeType::Text,
                 name: "Title".to_string(),
                 children: Vec::new(),
             }],
@@ -157,13 +218,11 @@ mod tests {
 
     #[test]
     fn ron_serialization_is_stable() {
-        let spec = UiSpec {
+        let spec = UiSpec::Container {
             id: "1:1".to_string(),
-            node_type: NodeType::Container,
             name: "Root".to_string(),
-            children: vec![UiSpec {
+            children: vec![UiSpec::Vector {
                 id: "1:2".to_string(),
-                node_type: NodeType::Vector,
                 name: "Icon".to_string(),
                 children: Vec::new(),
             }],
@@ -172,14 +231,13 @@ mod tests {
         let first = spec.to_pretty_ron().unwrap();
         let second = spec.to_pretty_ron().unwrap();
         assert_eq!(first, second);
-        assert!(first.contains("Node("));
+        assert!(first.contains("Container("));
     }
 
     #[test]
     fn leaf_nodes_omit_empty_children_in_ron() {
-        let leaf = UiSpec {
+        let leaf = UiSpec::Text {
             id: "9:9".to_string(),
-            node_type: NodeType::Text,
             name: "Leaf".to_string(),
             children: Vec::new(),
         };
@@ -214,13 +272,13 @@ mod tests {
         };
 
         let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
-        assert_eq!(spec.id, "1:1");
-        assert_eq!(spec.node_type, NodeType::Container);
-        assert_eq!(spec.children.len(), 2);
-        assert_eq!(spec.children[0].id, "2:1");
-        assert_eq!(spec.children[0].node_type, NodeType::Text);
-        assert_eq!(spec.children[1].id, "3:1");
-        assert_eq!(spec.children[1].node_type, NodeType::Vector);
+        assert_eq!(spec.id(), "1:1");
+        assert_eq!(spec.node_type(), NodeType::Container);
+        assert_eq!(spec.children().len(), 2);
+        assert_eq!(spec.children()[0].id(), "2:1");
+        assert_eq!(spec.children()[0].node_type(), NodeType::Text);
+        assert_eq!(spec.children()[1].id(), "3:1");
+        assert_eq!(spec.children()[1].node_type(), NodeType::Vector);
     }
 
     #[test]
@@ -248,7 +306,7 @@ mod tests {
         };
 
         let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
-        assert_eq!(spec.children[0].node_type, NodeType::Image);
+        assert_eq!(spec.children()[0].node_type(), NodeType::Image);
     }
 
     #[test]
