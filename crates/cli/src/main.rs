@@ -132,44 +132,44 @@ fn main() {
             Command::Generate { output, input } => {
                 let config = fetch_config_or_exit(&input, output);
                 match orchestrator::run_all_with_config(&config) {
-                Ok(results) => match output {
-                    OutputMode::Text => {
-                        for result in results {
-                            if let Some(artifact_path) = result.artifact_path {
-                                println!(
-                                    "stage={} output={} artifact={}",
-                                    result.stage_name, result.output_dir, artifact_path
-                                );
-                            } else {
-                                println!(
-                                    "stage={} output={}",
-                                    result.stage_name, result.output_dir
-                                );
+                    Ok(results) => match output {
+                        OutputMode::Text => {
+                            for result in results {
+                                if let Some(artifact_path) = result.artifact_path {
+                                    println!(
+                                        "stage={} output={} artifact={}",
+                                        result.stage_name, result.output_dir, artifact_path
+                                    );
+                                } else {
+                                    println!(
+                                        "stage={} output={}",
+                                        result.stage_name, result.output_dir
+                                    );
+                                }
                             }
                         }
-                    }
-                    OutputMode::Json => {
-                        let results = results
-                            .into_iter()
-                            .map(|result| {
-                                let artifact = if let Some(path) = result.artifact_path {
-                                    format!("\"{}\"", json_escape(path.as_str()))
-                                } else {
-                                    "null".to_string()
-                                };
-                                format!(
-                                    "{{\"stage\":\"{}\",\"output\":\"{}\",\"artifact\":{}}}",
-                                    json_escape(result.stage_name),
-                                    json_escape(result.output_dir),
-                                    artifact
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(",");
-                        println!("{{\"results\":[{results}]}}");
-                    }
-                },
-                Err(err) => emit_error_and_exit(err, output),
+                        OutputMode::Json => {
+                            let results = results
+                                .into_iter()
+                                .map(|result| {
+                                    let artifact = if let Some(path) = result.artifact_path {
+                                        format!("\"{}\"", json_escape(path.as_str()))
+                                    } else {
+                                        "null".to_string()
+                                    };
+                                    format!(
+                                        "{{\"stage\":\"{}\",\"output\":\"{}\",\"artifact\":{}}}",
+                                        json_escape(result.stage_name),
+                                        json_escape(result.output_dir),
+                                        artifact
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            println!("{{\"results\":[{results}]}}");
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
                 }
             }
             _ => {
@@ -231,11 +231,16 @@ fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -
     std::process::exit(2);
 }
 
-fn fetch_config_or_exit(input: &FetchInputOptions, output: OutputMode) -> orchestrator::PipelineRunConfig {
+fn fetch_config_or_exit(
+    input: &FetchInputOptions,
+    output: OutputMode,
+) -> orchestrator::PipelineRunConfig {
     build_fetch_config(input).unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
 }
 
-fn build_fetch_config(input: &FetchInputOptions) -> Result<orchestrator::PipelineRunConfig, String> {
+fn build_fetch_config(
+    input: &FetchInputOptions,
+) -> Result<orchestrator::PipelineRunConfig, String> {
     match input.input {
         InputMode::Fixture => Ok(orchestrator::PipelineRunConfig::default()),
         InputMode::Live => {

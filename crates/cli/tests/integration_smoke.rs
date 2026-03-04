@@ -71,7 +71,8 @@ fn generate_success_smoke() {
 
 #[test]
 fn generate_success_with_explicit_fixture_input_smoke() {
-    let workspace_root = unique_cli_workspace_root("generate_success_with_explicit_fixture_input_smoke");
+    let workspace_root =
+        unique_cli_workspace_root("generate_success_with_explicit_fixture_input_smoke");
 
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())

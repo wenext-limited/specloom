@@ -122,7 +122,9 @@ pub fn fetch_snapshot_from_fixture(
     })
 }
 
-pub fn fetch_snapshot_live(request: &LiveFetchRequest) -> Result<RawFigmaSnapshot, FetchClientError> {
+pub fn fetch_snapshot_live(
+    request: &LiveFetchRequest,
+) -> Result<RawFigmaSnapshot, FetchClientError> {
     fetch_snapshot_live_with_base_url(
         &request.fetch,
         request.figma_token.as_str(),
@@ -365,8 +367,8 @@ mod tests {
             }
         });
 
-        let snapshot =
-            super::build_snapshot_from_live_nodes_payload(&request, payload).expect("valid payload");
+        let snapshot = super::build_snapshot_from_live_nodes_payload(&request, payload)
+            .expect("valid payload");
 
         assert_eq!(snapshot.source.file_key, "abc123");
         assert_eq!(snapshot.source.node_id, "123:456");
@@ -491,8 +493,7 @@ mod tests {
         std::sync::mpsc::Receiver<String>,
         std::thread::JoinHandle<()>,
     ) {
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
         let address = listener
             .local_addr()
             .expect("mock server should expose local address");

@@ -541,8 +541,8 @@ mod tests {
 
     #[test]
     fn fetch_client_actionable_message_mentions_token_and_permissions() {
-        let message = PipelineError::FetchClient("figma api unauthorized".to_string())
-            .actionable_message();
+        let message =
+            PipelineError::FetchClient("figma api unauthorized".to_string()).actionable_message();
         assert!(message.contains("figma api unauthorized"));
         assert!(message.contains("FIGMA_TOKEN"));
         assert!(message.contains("file and node permissions"));
@@ -672,7 +672,9 @@ mod tests {
         );
 
         let lower_request = raw_request.to_ascii_lowercase();
-        assert!(raw_request.starts_with("GET /v1/files/live-file-key/nodes?ids=123%3A456 HTTP/1.1"));
+        assert!(
+            raw_request.starts_with("GET /v1/files/live-file-key/nodes?ids=123%3A456 HTTP/1.1")
+        );
         assert!(lower_request.contains("x-figma-token: secret-token"));
 
         let artifact_path = workspace_root.join("output/raw/fetch_snapshot.json");
@@ -1126,8 +1128,7 @@ mod tests {
         std::sync::mpsc::Receiver<String>,
         std::thread::JoinHandle<()>,
     ) {
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
         let address = listener
             .local_addr()
             .expect("mock server should expose local address");
