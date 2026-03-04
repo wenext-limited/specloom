@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub const RAW_SNAPSHOT_SCHEMA_VERSION: &str = "1.0";
 pub const FIGMA_API_VERSION: &str = "v1";
@@ -119,6 +119,96 @@ pub fn fetch_snapshot_from_fixture(
             figma_api_version: FIGMA_API_VERSION.to_string(),
         },
         payload,
+    })
+}
+
+pub fn fetch_snapshot_live(request: &LiveFetchRequest) -> Result<RawFigmaSnapshot, FetchClientError> {
+    fetch_snapshot_live_with_base_url(
+        &request.fetch,
+        request.figma_token.as_str(),
+        request.api_base_url(),
+    )
+}
+
+pub fn fetch_snapshot_live_with_base_url(
+    request: &FetchNodesRequest,
+    figma_token: &str,
+    api_base_url: &str,
+) -> Result<RawFigmaSnapshot, FetchClientError> {
+    let figma_token = figma_token.trim();
+    if figma_token.is_empty() {
+        return Err(FetchClientError::InvalidRequest(
+            "figma_token is required for live fetch".to_string(),
+        ));
+    }
+    let api_base_url = api_base_url.trim();
+    if api_base_url.is_empty() {
+        return Err(FetchClientError::InvalidRequest(
+            "api_base_url is required for live fetch".to_string(),
+        ));
+    }
+
+    let api_url = format!(
+        "{}/v1/files/{}/nodes",
+        api_base_url.trim_end_matches('/'),
+        request.file_key
+    );
+
+    let response = reqwest::blocking::Client::new()
+        .get(api_url)
+        .header("X-Figma-Token", figma_token)
+        .query(&[("ids", request.node_id.as_str())])
+        .send()
+        .map_err(|err| FetchClientError::HttpTransport(err.to_string()))?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(FetchClientError::Unauthorized);
+    }
+    if !status.is_success() {
+        let body = response
+            .text()
+            .unwrap_or_else(|_| "response body unavailable".to_string());
+        return Err(FetchClientError::HttpStatus {
+            status: status.as_u16(),
+            message: body,
+        });
+    }
+
+    let payload = response
+        .json::<Value>()
+        .map_err(|err| FetchClientError::InvalidApiResponse(err.to_string()))?;
+    build_snapshot_from_live_nodes_payload(request, payload)
+}
+
+fn build_snapshot_from_live_nodes_payload(
+    request: &FetchNodesRequest,
+    payload: Value,
+) -> Result<RawFigmaSnapshot, FetchClientError> {
+    let document = payload
+        .get("nodes")
+        .and_then(Value::as_object)
+        .and_then(|nodes| nodes.get(request.node_id.as_str()))
+        .and_then(Value::as_object)
+        .and_then(|node| node.get("document"))
+        .cloned()
+        .ok_or_else(|| {
+            FetchClientError::InvalidApiResponse(format!(
+                "missing nodes.{}.document in figma response",
+                request.node_id
+            ))
+        })?;
+
+    Ok(RawFigmaSnapshot {
+        snapshot_version: RAW_SNAPSHOT_SCHEMA_VERSION.to_string(),
+        source: RawSnapshotSource {
+            file_key: request.file_key.clone(),
+            node_id: request.node_id.clone(),
+            figma_api_version: FIGMA_API_VERSION.to_string(),
+        },
+        payload: json!({
+            "document": document
+        }),
     })
 }
 
@@ -256,6 +346,68 @@ mod tests {
         assert_eq!(
             http_status.to_string(),
             "figma api returned non-success status 404: Not Found"
+        );
+    }
+
+    #[test]
+    fn build_snapshot_from_live_nodes_payload_extracts_requested_document() {
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+        let payload = serde_json::json!({
+            "nodes": {
+                "123:456": {
+                    "document": {
+                        "id": "123:456",
+                        "name": "Live Root"
+                    }
+                }
+            }
+        });
+
+        let snapshot =
+            super::build_snapshot_from_live_nodes_payload(&request, payload).expect("valid payload");
+
+        assert_eq!(snapshot.source.file_key, "abc123");
+        assert_eq!(snapshot.source.node_id, "123:456");
+        assert_eq!(
+            snapshot.payload,
+            serde_json::json!({
+                "document": {
+                    "id": "123:456",
+                    "name": "Live Root"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn build_snapshot_from_live_nodes_payload_requires_document_for_node() {
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+        let payload = serde_json::json!({
+            "nodes": {
+                "123:456": {}
+            }
+        });
+
+        let err = super::build_snapshot_from_live_nodes_payload(&request, payload)
+            .expect_err("payload without document should fail");
+        assert_eq!(
+            err.to_string(),
+            "invalid figma api response: missing nodes.123:456.document in figma response"
+        );
+    }
+
+    #[test]
+    fn fetch_snapshot_live_rejects_missing_figma_token() {
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+        let err = super::fetch_snapshot_live_with_base_url(&request, "", "http://127.0.0.1:9")
+            .expect_err("empty token should fail");
+
+        assert_eq!(
+            err.to_string(),
+            "invalid fetch request: figma_token is required for live fetch"
         );
     }
 }
