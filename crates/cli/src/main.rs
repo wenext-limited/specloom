@@ -12,7 +12,12 @@ struct Cli {
 
 #[derive(Debug, clap::Subcommand)]
 enum Command {
-    Fetch,
+    Fetch {
+        #[command(flatten)]
+        input: FetchInputOptions,
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
     Normalize,
     InferLayout,
     BuildSpec,
@@ -22,6 +27,8 @@ enum Command {
     Generate {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
+        #[command(flatten)]
+        input: FetchInputOptions,
     },
     Stages {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
@@ -40,10 +47,49 @@ enum OutputMode {
     Json,
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct FetchInputOptions {
+    #[arg(long, value_enum, default_value_t = InputMode::Fixture)]
+    input: InputMode,
+    #[arg(long)]
+    file_key: Option<String>,
+    #[arg(long)]
+    node_id: Option<String>,
+    #[arg(long)]
+    figma_token: Option<String>,
+    #[arg(long, hide = true)]
+    figma_api_base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
+enum InputMode {
+    #[default]
+    Fixture,
+    Live,
+}
+
 fn main() {
     let cli = Cli::parse();
     if let Some(command) = cli.command {
         match command {
+            Command::Fetch { input, output } => {
+                let config = fetch_config_or_exit(&input, output);
+                match orchestrator::run_stage_with_config("fetch", &config) {
+                    Ok(result) => match output {
+                        OutputMode::Text => {
+                            println!("stage={} output={}", result.stage_name, result.output_dir);
+                        }
+                        OutputMode::Json => {
+                            println!(
+                                "{{\"stage\":\"{}\",\"output\":\"{}\"}}",
+                                json_escape(result.stage_name),
+                                json_escape(result.output_dir)
+                            );
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
+                }
+            }
             Command::Stages { output } => {
                 let stages = orchestrator::pipeline_stage_output_dirs();
                 match output {
@@ -83,7 +129,9 @@ fn main() {
                 },
                 Err(err) => emit_error_and_exit(err, output),
             },
-            Command::Generate { output } => match orchestrator::run_all() {
+            Command::Generate { output, input } => {
+                let config = fetch_config_or_exit(&input, output);
+                match orchestrator::run_all_with_config(&config) {
                 Ok(results) => match output {
                     OutputMode::Text => {
                         for result in results {
@@ -122,7 +170,8 @@ fn main() {
                     }
                 },
                 Err(err) => emit_error_and_exit(err, output),
-            },
+                }
+            }
             _ => {
                 let stage_name = command.stage_name();
                 if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
@@ -139,7 +188,7 @@ fn main() {
 impl Command {
     fn stage_name(&self) -> &'static str {
         match self {
-            Command::Fetch => "fetch",
+            Command::Fetch { .. } => "fetch",
             Command::Normalize => "normalize",
             Command::InferLayout => "infer-layout",
             Command::BuildSpec => "build-spec",
@@ -178,6 +227,71 @@ fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -
         OutputMode::Json => {
             eprintln!("{{\"error\":\"{}\"}}", json_escape(&message));
         }
+    }
+    std::process::exit(2);
+}
+
+fn fetch_config_or_exit(input: &FetchInputOptions, output: OutputMode) -> orchestrator::PipelineRunConfig {
+    build_fetch_config(input).unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
+}
+
+fn build_fetch_config(input: &FetchInputOptions) -> Result<orchestrator::PipelineRunConfig, String> {
+    match input.input {
+        InputMode::Fixture => Ok(orchestrator::PipelineRunConfig::default()),
+        InputMode::Live => {
+            let file_key = normalize_optional_field(input.file_key.as_deref());
+            let node_id = normalize_optional_field(input.node_id.as_deref());
+            let figma_token = normalize_optional_field(input.figma_token.as_deref())
+                .or_else(figma_token_from_env);
+            let api_base_url = normalize_optional_field(input.figma_api_base_url.as_deref());
+
+            let mut missing_values = Vec::new();
+            if file_key.is_none() {
+                missing_values.push("--file-key");
+            }
+            if node_id.is_none() {
+                missing_values.push("--node-id");
+            }
+            if figma_token.is_none() {
+                missing_values.push("FIGMA_TOKEN (or --figma-token)");
+            }
+
+            if !missing_values.is_empty() {
+                return Err(format!(
+                    "live input missing required value(s): {}. Provide the missing value(s) and retry.",
+                    missing_values.join(", ")
+                ));
+            }
+
+            Ok(orchestrator::PipelineRunConfig {
+                fetch_mode: orchestrator::FetchMode::Live(orchestrator::LiveFetchConfig {
+                    file_key: file_key.expect("checked above"),
+                    node_id: node_id.expect("checked above"),
+                    figma_token: figma_token.expect("checked above"),
+                    api_base_url,
+                }),
+            })
+        }
+    }
+}
+
+fn figma_token_from_env() -> Option<String> {
+    std::env::var("FIGMA_TOKEN")
+        .ok()
+        .and_then(|value| normalize_optional_field(Some(value.as_str())))
+}
+
+fn normalize_optional_field(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn emit_usage_error_and_exit(message: &str, output: OutputMode) -> ! {
+    match output {
+        OutputMode::Text => eprintln!("{message}"),
+        OutputMode::Json => eprintln!("{{\"error\":\"{}\"}}", json_escape(message)),
     }
     std::process::exit(2);
 }

@@ -22,6 +22,21 @@ fn fetch_subcommand_prints_stage_output_directory() {
 }
 
 #[test]
+fn fetch_subcommand_rejects_live_input_without_required_values() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["fetch", "--input", "live"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("live input missing required value(s)"));
+    assert!(stderr.contains("--file-key"));
+    assert!(stderr.contains("--node-id"));
+    assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
+}
+
+#[test]
 fn stages_subcommand_lists_all_stage_outputs() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .arg("stages")
@@ -161,6 +176,20 @@ fn generate_subcommand_runs_full_pipeline() {
     assert!(text.contains("stage=report output=output/reports"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn generate_subcommand_rejects_live_input_without_required_values() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["generate", "--input", "live", "--file-key", "abc123"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("live input missing required value(s)"));
+    assert!(stderr.contains("--node-id"));
+    assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
 }
 
 #[test]
