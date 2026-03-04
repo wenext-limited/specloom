@@ -21,6 +21,8 @@ enum Command {
     Normalize,
     InferLayout,
     BuildSpec,
+    BuildUiBlueprint,
+    #[command(hide = true)]
     GenSwiftui,
     ExportAssets,
     Report,
@@ -200,6 +202,7 @@ impl Command {
             Command::Normalize => "normalize",
             Command::InferLayout => "infer-layout",
             Command::BuildSpec => "build-spec",
+            Command::BuildUiBlueprint => "build-ui-blueprint",
             Command::GenSwiftui => "gen-swiftui",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",

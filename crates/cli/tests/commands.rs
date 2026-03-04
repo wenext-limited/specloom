@@ -126,6 +126,7 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=build-ui-blueprint output=output/specs"));
     assert!(text.contains("stage=gen-swiftui output=output/swift"));
     assert!(text.contains("stage=export-assets output=output/assets"));
     assert!(text.contains("stage=report output=output/reports"));
@@ -175,7 +176,7 @@ fn stages_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"gen-swiftui","output":"output/swift"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"}]}"#
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-ui-blueprint","output":"output/specs"},{"stage":"gen-swiftui","output":"output/swift"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"}]}"#
     );
 }
 
@@ -249,7 +250,8 @@ fn generate_subcommand_runs_full_pipeline() {
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
-    assert!(text.contains("stage=gen-swiftui output=output/swift"));
+    assert!(text.contains("stage=build-ui-blueprint output=output/specs"));
+    assert!(!text.contains("stage=gen-swiftui output=output/swift"));
     assert!(text.contains("stage=export-assets output=output/assets"));
     assert!(text.contains("stage=report output=output/reports"));
 
@@ -301,7 +303,7 @@ fn generate_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.json"},{"stage":"gen-swiftui","output":"output/swift","artifact":"output/swift/FixtureRootView.swift"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"},{"stage":"report","output":"output/reports","artifact":"output/reports/review_report.json"}]}"#
+        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.json"},{"stage":"build-ui-blueprint","output":"output/specs","artifact":"output/specs/ui_blueprint.yaml"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"},{"stage":"report","output":"output/reports","artifact":"output/reports/review_report.json"}]}"#
     );
 
     let _ = std::fs::remove_dir_all(&workspace_root);

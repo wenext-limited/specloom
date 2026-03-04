@@ -21,9 +21,9 @@
       "artifact": "output/specs/ui_spec.json"
     },
     {
-      "stage": "gen-swiftui",
-      "output": "output/swift",
-      "artifact": "output/swift/FixtureRootView.swift"
+      "stage": "build-ui-blueprint",
+      "output": "output/specs",
+      "artifact": "output/specs/ui_blueprint.yaml"
     },
     {
       "stage": "export-assets",
