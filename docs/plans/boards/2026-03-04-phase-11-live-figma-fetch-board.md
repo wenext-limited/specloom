@@ -22,7 +22,7 @@
 | [x] | P11-T5 | Harden orchestrator live fetch actionable errors | codex | P11-T4 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `2563757` | Started 2026-03-04 16:40 CST; added actionable live fetch guidance for token/env, params, and permission failures |
 | [x] | P11-T6 | Expose live fetch options in CLI | codex | P11-T5 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | `9476868` | Started 2026-03-04 16:41 CST; added live input flags/config handoff with validation for `fetch`/`generate` |
 | [x] | P11-T7 | Add CLI live-mode validation coverage | codex | P11-T6 | `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | `12bb949` | Started 2026-03-04 16:45 CST; added env token fallback and deterministic live validation checks |
-| [ ] | P11-T8 | Document live usage in README | unassigned | P11-T6 | `README.md` | docs self-check + command copy/paste validation | - | Add explicit live quickstart and fixture/live mode boundaries |
+| [~] | P11-T8 | Document live usage in README | codex | P11-T6 | `README.md` | docs self-check + command copy/paste validation | - | Started 2026-03-04 16:46 CST; documenting fixture vs live start-points and copy/paste commands |
 | [ ] | P11-T9 | Final verification and closeout | unassigned | P11-T7,P11-T8 | `docs/plans/boards/2026-03-04-phase-11-live-figma-fetch-board.md` | `cargo fmt --all --check && cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge phase into `main` and verify again on merged `main` |
 
 ## Parallelization Rules
