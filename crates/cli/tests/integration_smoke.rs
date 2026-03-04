@@ -10,6 +10,18 @@ fn cli_help_smoke() {
 
 #[test]
 fn run_stage_success_smoke() {
+    let fetch_out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "fetch"])
+        .output()
+        .unwrap();
+
+    assert!(fetch_out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&fetch_out.stdout),
+        "stage=fetch output=output/raw\n"
+    );
+    assert!(fetch_out.stderr.is_empty());
+
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["run-stage", "normalize"])
         .output()

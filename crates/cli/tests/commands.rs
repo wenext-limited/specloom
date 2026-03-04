@@ -39,6 +39,12 @@ fn stages_subcommand_lists_all_stage_outputs() {
 
 #[test]
 fn run_stage_subcommand_runs_selected_stage() {
+    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "fetch"])
+        .output()
+        .unwrap();
+    assert!(fetch_output.status.success());
+
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["run-stage", "normalize"])
         .output()
@@ -79,6 +85,12 @@ fn stages_subcommand_supports_json_output_mode() {
 
 #[test]
 fn run_stage_subcommand_supports_json_output_mode() {
+    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "fetch"])
+        .output()
+        .unwrap();
+    assert!(fetch_output.status.success());
+
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["run-stage", "normalize", "--output", "json"])
         .output()
