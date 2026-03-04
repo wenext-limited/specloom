@@ -22,6 +22,8 @@ pub enum PipelineError {
     UiSpecBuild(String),
     #[error("swiftui ast build error: {0}")]
     SwiftUiAstBuild(String),
+    #[error("llm bundle error: {0}")]
+    LlmBundle(String),
 }
 
 impl PipelineError {
@@ -104,6 +106,7 @@ const BLUEPRINT_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_blueprint.yaml";
 const SWIFT_ARTIFACT_OUTPUT_DIR: &str = "output/swift";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const REPORT_ARTIFACT_RELATIVE_PATH: &str = "output/reports/review_report.json";
+const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/llm/llm_bundle.json";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -124,11 +127,12 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         BLUEPRINT_ARTIFACT_RELATIVE_PATH => Some("build-ui-blueprint"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
         REPORT_ARTIFACT_RELATIVE_PATH => Some("report"),
+        LLM_BUNDLE_ARTIFACT_RELATIVE_PATH => Some("prepare-llm-bundle"),
         _ => None,
     }
 }
 
-const PIPELINE_STAGES: [PipelineStageDefinition; 8] = [
+const PIPELINE_STAGES: [PipelineStageDefinition; 9] = [
     PipelineStageDefinition {
         name: "fetch",
         output_dir: "output/raw",
@@ -160,6 +164,10 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 8] = [
     PipelineStageDefinition {
         name: "report",
         output_dir: "output/reports",
+    },
+    PipelineStageDefinition {
+        name: "prepare-llm-bundle",
+        output_dir: "output/llm",
     },
 ];
 
@@ -250,6 +258,7 @@ pub fn run_stage_in_workspace_with_config(
         "gen-swiftui" => Some(run_gen_swiftui_stage(workspace_root)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
         "report" => Some(run_report_stage(workspace_root)?),
+        "prepare-llm-bundle" => Some(run_prepare_llm_bundle_stage(workspace_root)?),
         _ => None,
     };
 
@@ -500,6 +509,54 @@ fn run_report_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     Ok(REPORT_ARTIFACT_RELATIVE_PATH.to_string())
 }
 
+fn run_prepare_llm_bundle_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let blueprint_path = workspace_root.join(BLUEPRINT_ARTIFACT_RELATIVE_PATH);
+    if !blueprint_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            BLUEPRINT_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+    let assets_path = workspace_root.join(ASSET_MANIFEST_RELATIVE_PATH);
+    if !assets_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            ASSET_MANIFEST_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let blueprint_artifact = std::fs::read_to_string(&blueprint_path).map_err(io_error)?;
+    let blueprint: ui_blueprint::UiBlueprint =
+        serde_yaml::from_str(&blueprint_artifact).map_err(yaml_deserialization_error)?;
+    let warnings_summary = blueprint
+        .warnings
+        .iter()
+        .map(|warning| llm_bundle::BundleWarningSummary {
+            code: warning.code.clone(),
+            node_id: warning.node_id.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let mut bundle = llm_bundle::build_bundle(
+        "target-agnostic",
+        blueprint_path.as_path(),
+        assets_path.as_path(),
+        warnings_summary,
+        "v1",
+    )
+    .map_err(llm_bundle_error)?;
+    bundle.blueprint.path = BLUEPRINT_ARTIFACT_RELATIVE_PATH.to_string();
+    bundle.asset_manifest.path = ASSET_MANIFEST_RELATIVE_PATH.to_string();
+
+    let output_path = workspace_root.join(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH);
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let mut encoded = bundle.to_pretty_json().map_err(serialization_error)?;
+    encoded.push(b'\n');
+    std::fs::write(&output_path, encoded).map_err(io_error)?;
+
+    Ok(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
 fn io_error(err: std::io::Error) -> PipelineError {
     PipelineError::Io(err.to_string())
 }
@@ -528,6 +585,14 @@ fn blueprint_yaml_error(err: ui_blueprint::BlueprintError) -> PipelineError {
     PipelineError::Serialization(err.to_string())
 }
 
+fn yaml_deserialization_error(err: serde_yaml::Error) -> PipelineError {
+    PipelineError::Serialization(err.to_string())
+}
+
+fn llm_bundle_error(err: llm_bundle::LlmBundleError) -> PipelineError {
+    PipelineError::LlmBundle(err.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,6 +613,7 @@ mod tests {
                 "gen-swiftui",
                 "export-assets",
                 "report",
+                "prepare-llm-bundle",
             ]
         );
     }
@@ -619,6 +685,7 @@ mod tests {
                 ("gen-swiftui", "output/swift"),
                 ("export-assets", "output/assets"),
                 ("report", "output/reports"),
+                ("prepare-llm-bundle", "output/llm"),
             ]
         );
     }
@@ -980,6 +1047,52 @@ mod tests {
             asset_pipeline::ASSET_MANIFEST_VERSION
         );
         assert_eq!(manifest.generation.source_file_key, "fixture-file-key");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_prepare_llm_bundle_writes_bundle_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_prepare_llm_bundle_writes_bundle_artifact");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run first");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run first");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run first");
+        run_stage_in_workspace("build-ui-blueprint", workspace_root.as_path())
+            .expect("build-ui-blueprint should run first");
+        run_stage_in_workspace("export-assets", workspace_root.as_path())
+            .expect("export-assets should run first");
+
+        let result = run_stage_in_workspace("prepare-llm-bundle", workspace_root.as_path())
+            .expect("prepare-llm-bundle should run");
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "prepare-llm-bundle",
+                output_dir: "output/llm",
+                artifact_path: Some("output/llm/llm_bundle.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/llm/llm_bundle.json");
+        assert!(artifact_path.is_file(), "llm bundle artifact should exist");
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let bundle: llm_bundle::LlmBundle =
+            serde_json::from_str(&artifact).expect("artifact should be valid llm bundle json");
+        assert_eq!(bundle.bundle_version, llm_bundle::LLM_BUNDLE_VERSION);
+        assert_eq!(bundle.target, "target-agnostic");
+        assert_eq!(bundle.prompt_template_version, "v1");
+        assert_eq!(bundle.blueprint.path, "output/specs/ui_blueprint.yaml");
+        assert_eq!(
+            bundle.asset_manifest.path,
+            "output/assets/asset_manifest.json"
+        );
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
