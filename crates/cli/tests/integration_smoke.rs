@@ -124,6 +124,20 @@ fn prepare_llm_bundle_success_smoke() {
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
 
+#[test]
+fn generate_ui_requires_api_key() {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["generate-ui", "--target", "swiftui", "--model", "gpt-5"])
+        .env_remove("OPENAI_API_KEY")
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("OPENAI_API_KEY"));
+}
+
 fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
     let timestamp_nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

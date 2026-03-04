@@ -700,6 +700,7 @@ dependencies = [
  "figma_normalizer",
  "layout_infer",
  "llm_bundle",
+ "llm_codegen",
  "review_report",
  "serde_json",
  "serde_yaml",

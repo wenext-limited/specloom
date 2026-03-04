@@ -24,6 +24,8 @@ pub enum PipelineError {
     SwiftUiAstBuild(String),
     #[error("llm bundle error: {0}")]
     LlmBundle(String),
+    #[error("llm code generation error: {0}")]
+    LlmCodegen(String),
 }
 
 impl PipelineError {
@@ -52,6 +54,9 @@ impl PipelineError {
             ),
             Self::FetchClient(details) => format!(
                 "fetch client error: {details}. For live fetch, verify `--input live`, `--file-key`, `--node-id`, and `FIGMA_TOKEN` (or `--figma-token`), then confirm file and node permissions in Figma."
+            ),
+            Self::LlmCodegen(details) => format!(
+                "llm code generation error: {details}. Verify `OPENAI_API_KEY` (or `--api-key`), confirm the LLM bundle exists (`output/llm/llm_bundle.json` by default), and rerun `cli generate-ui`."
             ),
             _ => self.to_string(),
         }
@@ -98,6 +103,23 @@ pub struct LiveFetchConfig {
     pub api_base_url: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerateUiConfig {
+    pub target: String,
+    pub model: String,
+    pub api_key: String,
+    pub bundle_path: Option<String>,
+    pub output_dir: Option<String>,
+    pub api_base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerateUiExecutionResult {
+    pub output_dir: String,
+    pub run_record_path: String,
+    pub written_files: Vec<String>,
+}
+
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
@@ -107,6 +129,7 @@ const SWIFT_ARTIFACT_OUTPUT_DIR: &str = "output/swift";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const REPORT_ARTIFACT_RELATIVE_PATH: &str = "output/reports/review_report.json";
 const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/llm/llm_bundle.json";
+const GENERATED_UI_OUTPUT_RELATIVE_DIR: &str = "output/generated-ui";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -236,6 +259,50 @@ pub fn run_stage_in_workspace(
     workspace_root: &Path,
 ) -> Result<StageExecutionResult, PipelineError> {
     run_stage_in_workspace_with_config(stage_name, workspace_root, &PipelineRunConfig::default())
+}
+
+pub fn generate_ui(config: &GenerateUiConfig) -> Result<GenerateUiExecutionResult, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    generate_ui_in_workspace(workspace_root.as_path(), config)
+}
+
+pub fn generate_ui_in_workspace(
+    workspace_root: &Path,
+    config: &GenerateUiConfig,
+) -> Result<GenerateUiExecutionResult, PipelineError> {
+    let bundle_input = config
+        .bundle_path
+        .as_deref()
+        .unwrap_or(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH);
+    let output_input = config
+        .output_dir
+        .as_deref()
+        .unwrap_or(GENERATED_UI_OUTPUT_RELATIVE_DIR);
+
+    let bundle_path = resolve_input_path(workspace_root, bundle_input);
+    let output_dir = resolve_input_path(workspace_root, output_input);
+    let result = llm_codegen::generate_ui(&llm_codegen::GenerateUiRequest {
+        model: config.model.clone(),
+        target: config.target.clone(),
+        bundle_path: bundle_path.clone(),
+        output_dir: output_dir.clone(),
+        api_key: config.api_key.clone(),
+        api_base_url: config.api_base_url.clone(),
+    })
+    .map_err(llm_codegen_error)?;
+
+    Ok(GenerateUiExecutionResult {
+        output_dir: normalize_result_path(workspace_root, output_dir.as_path()),
+        run_record_path: normalize_result_path(
+            workspace_root,
+            Path::new(result.run_record_path.as_str()),
+        ),
+        written_files: result
+            .written_files
+            .iter()
+            .map(|path| normalize_result_path(workspace_root, Path::new(path.as_str())))
+            .collect(),
+    })
 }
 
 pub fn run_stage_in_workspace_with_config(
@@ -557,6 +624,21 @@ fn run_prepare_llm_bundle_stage(workspace_root: &Path) -> Result<String, Pipelin
     Ok(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH.to_string())
 }
 
+fn resolve_input_path(workspace_root: &Path, input: &str) -> std::path::PathBuf {
+    let path = Path::new(input);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        workspace_root.join(path)
+    }
+}
+
+fn normalize_result_path(workspace_root: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace_root)
+        .map(|relative| relative.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+}
+
 fn io_error(err: std::io::Error) -> PipelineError {
     PipelineError::Io(err.to_string())
 }
@@ -591,6 +673,10 @@ fn yaml_deserialization_error(err: serde_yaml::Error) -> PipelineError {
 
 fn llm_bundle_error(err: llm_bundle::LlmBundleError) -> PipelineError {
     PipelineError::LlmBundle(err.to_string())
+}
+
+fn llm_codegen_error(err: llm_codegen::GenerateUiError) -> PipelineError {
+    PipelineError::LlmCodegen(err.to_string())
 }
 
 #[cfg(test)]

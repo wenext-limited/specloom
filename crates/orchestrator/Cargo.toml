@@ -9,6 +9,7 @@ figma_client = { path = "../figma_client" }
 figma_normalizer = { path = "../figma_normalizer" }
 layout_infer = { path = "../layout_infer" }
 llm_bundle = { path = "../llm_bundle" }
+llm_codegen = { path = "../llm_codegen" }
 review_report = { path = "../review_report" }
 serde_json = "1.0"
 serde_yaml = "0.9"

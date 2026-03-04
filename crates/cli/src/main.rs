@@ -27,6 +27,22 @@ enum Command {
     PrepareLlmBundle,
     ExportAssets,
     Report,
+    GenerateUi {
+        #[arg(long)]
+        target: String,
+        #[arg(long, default_value = "gpt-5")]
+        model: String,
+        #[arg(long)]
+        api_key: Option<String>,
+        #[arg(long)]
+        bundle_path: Option<String>,
+        #[arg(long)]
+        output_dir: Option<String>,
+        #[arg(long, hide = true)]
+        api_base_url: Option<String>,
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
     Generate {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
@@ -140,6 +156,62 @@ fn main() {
                 },
                 Err(err) => emit_error_and_exit(err, output),
             },
+            Command::GenerateUi {
+                target,
+                model,
+                api_key,
+                bundle_path,
+                output_dir,
+                api_base_url,
+                output,
+            } => {
+                let api_key = normalize_optional_field(api_key.as_deref())
+                    .or_else(openai_api_key_from_env)
+                    .unwrap_or_else(|| {
+                        emit_usage_error_and_exit(
+                            "generate-ui missing required value: OPENAI_API_KEY (or --api-key). Provide an API key and retry.",
+                            output,
+                        )
+                    });
+
+                let config = orchestrator::GenerateUiConfig {
+                    target,
+                    model,
+                    api_key,
+                    bundle_path: normalize_optional_field(bundle_path.as_deref()),
+                    output_dir: normalize_optional_field(output_dir.as_deref()),
+                    api_base_url: normalize_optional_field(api_base_url.as_deref()),
+                };
+                match orchestrator::generate_ui(&config) {
+                    Ok(result) => match output {
+                        OutputMode::Text => {
+                            println!(
+                                "target={} output={} run_record={} files={}",
+                                config.target.as_str(),
+                                result.output_dir,
+                                result.run_record_path,
+                                result.written_files.len()
+                            );
+                        }
+                        OutputMode::Json => {
+                            let files = result
+                                .written_files
+                                .iter()
+                                .map(|path| format!("\"{}\"", json_escape(path)))
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            println!(
+                                "{{\"target\":\"{}\",\"output\":\"{}\",\"run_record\":\"{}\",\"files\":[{}]}}",
+                                json_escape(config.target.as_str()),
+                                json_escape(result.output_dir.as_str()),
+                                json_escape(result.run_record_path.as_str()),
+                                files
+                            );
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
+                }
+            }
             Command::Generate { output, input } => {
                 let config = fetch_config_or_exit(&input, output);
                 match orchestrator::run_all_with_config(&config) {
@@ -208,6 +280,7 @@ impl Command {
             Command::PrepareLlmBundle => "prepare-llm-bundle",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
+            Command::GenerateUi { .. } => "generate-ui",
             Command::Generate { .. } => "generate",
             Command::Stages { .. } => "stages",
             Command::RunStage { .. } => "run-stage",
@@ -306,6 +379,12 @@ fn build_fetch_config(
 
 fn figma_token_from_env() -> Option<String> {
     std::env::var("FIGMA_TOKEN")
+        .ok()
+        .and_then(|value| normalize_optional_field(Some(value.as_str())))
+}
+
+fn openai_api_key_from_env() -> Option<String> {
+    std::env::var("OPENAI_API_KEY")
         .ok()
         .and_then(|value| normalize_optional_field(Some(value.as_str())))
 }
