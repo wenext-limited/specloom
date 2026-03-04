@@ -126,6 +126,8 @@ const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const REPORT_ARTIFACT_RELATIVE_PATH: &str = "output/reports/review_report.json";
 const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/llm/llm_bundle.json";
 const GENERATED_UI_OUTPUT_RELATIVE_DIR: &str = "output/generated-ui";
+const LIVE_FETCH_CACHE_RELATIVE_DIR: &str = "output/cache/figma";
+const DEFAULT_LIVE_FETCH_CACHE_MAX_AGE_SECS: u64 = 300;
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -332,14 +334,7 @@ fn run_fetch_stage(workspace_root: &Path, fetch_mode: &FetchMode) -> Result<Stri
                 .map_err(fetch_error)?
         }
         FetchMode::Live(config) => {
-            let request = figma_client::LiveFetchRequest::new(
-                config.file_key.clone(),
-                config.node_id.clone(),
-                config.figma_token.clone(),
-                config.api_base_url.clone(),
-            )
-            .map_err(fetch_error)?;
-            figma_client::fetch_snapshot_live(&request).map_err(fetch_error)?
+            run_live_fetch_with_cache(workspace_root, config)?
         }
     };
 
@@ -352,6 +347,110 @@ fn run_fetch_stage(workspace_root: &Path, fetch_mode: &FetchMode) -> Result<Stri
     std::fs::write(&artifact_path, format!("{encoded}\n")).map_err(io_error)?;
 
     Ok(FETCH_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
+fn run_live_fetch_with_cache(
+    workspace_root: &Path,
+    config: &LiveFetchConfig,
+) -> Result<figma_client::RawFigmaSnapshot, PipelineError> {
+    let request = figma_client::LiveFetchRequest::new(
+        config.file_key.clone(),
+        config.node_id.clone(),
+        config.figma_token.clone(),
+        config.api_base_url.clone(),
+    )
+    .map_err(fetch_error)?;
+
+    if fetch_cache_disabled() {
+        return figma_client::fetch_snapshot_live(&request).map_err(fetch_error);
+    }
+
+    let cache_path = live_fetch_cache_path(workspace_root, config);
+    if let Some(snapshot) = try_read_live_fetch_cache(
+        cache_path.as_path(),
+        live_fetch_cache_max_age_secs(),
+    ) {
+        return Ok(snapshot);
+    }
+
+    let snapshot = figma_client::fetch_snapshot_live(&request).map_err(fetch_error)?;
+    write_live_fetch_cache(cache_path.as_path(), &snapshot);
+    Ok(snapshot)
+}
+
+fn live_fetch_cache_path(workspace_root: &Path, config: &LiveFetchConfig) -> std::path::PathBuf {
+    let api_base = config
+        .api_base_url
+        .as_deref()
+        .unwrap_or(figma_client::DEFAULT_FIGMA_API_BASE_URL);
+    let file_key = sanitize_cache_component(config.file_key.as_str());
+    let node_id = sanitize_cache_component(config.node_id.as_str());
+    let api_base = sanitize_cache_component(api_base);
+    workspace_root
+        .join(LIVE_FETCH_CACHE_RELATIVE_DIR)
+        .join(format!("{api_base}__{file_key}__{node_id}.json"))
+}
+
+fn sanitize_cache_component(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string();
+    if sanitized.is_empty() {
+        "default".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn live_fetch_cache_max_age_secs() -> u64 {
+    std::env::var("FORGE_FETCH_CACHE_MAX_AGE_SECS")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_LIVE_FETCH_CACHE_MAX_AGE_SECS)
+}
+
+fn fetch_cache_disabled() -> bool {
+    std::env::var("FORGE_FETCH_CACHE_DISABLE")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn try_read_live_fetch_cache(
+    cache_path: &Path,
+    max_age_secs: u64,
+) -> Option<figma_client::RawFigmaSnapshot> {
+    let metadata = std::fs::metadata(cache_path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let age = std::time::SystemTime::now().duration_since(modified).ok()?;
+    if age > std::time::Duration::from_secs(max_age_secs) {
+        return None;
+    }
+
+    let artifact = std::fs::read_to_string(cache_path).ok()?;
+    serde_json::from_str::<figma_client::RawFigmaSnapshot>(&artifact).ok()
+}
+
+fn write_live_fetch_cache(cache_path: &Path, snapshot: &figma_client::RawFigmaSnapshot) {
+    let Some(parent) = cache_path.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let Ok(mut encoded) = serde_json::to_vec_pretty(snapshot) else {
+        return;
+    };
+    encoded.push(b'\n');
+    let _ = std::fs::write(cache_path, encoded);
 }
 
 fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
@@ -812,6 +911,73 @@ mod tests {
                 "document": {
                     "id": "123:456",
                     "name": "Live Root",
+                    "type": "FRAME",
+                    "children": []
+                }
+            })
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_fetch_with_live_config_uses_fresh_cache() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_fetch_with_live_config_uses_fresh_cache");
+        let (base_url, request_rx, server_thread) = start_single_response_server(
+            "200 OK",
+            r#"{
+                "nodes": {
+                    "123:456": {
+                        "document": {
+                            "id": "123:456",
+                            "name": "Cached Root",
+                            "type": "FRAME",
+                            "children": []
+                        }
+                    }
+                }
+            }"#,
+        );
+        let config = PipelineRunConfig {
+            fetch_mode: FetchMode::Live(LiveFetchConfig {
+                file_key: "live-file-key".to_string(),
+                node_id: "123:456".to_string(),
+                figma_token: "secret-token".to_string(),
+                api_base_url: Some(base_url),
+            }),
+        };
+
+        let first = run_stage_in_workspace_with_config("fetch", workspace_root.as_path(), &config)
+            .expect("first live fetch should run");
+        let _ = request_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("mock server should receive first request");
+        server_thread.join().expect("server thread should finish");
+
+        let live_config = match &config.fetch_mode {
+            FetchMode::Live(live_config) => live_config,
+            FetchMode::Fixture => panic!("expected live fetch config"),
+        };
+        let cache_path = live_fetch_cache_path(workspace_root.as_path(), live_config);
+        assert!(cache_path.is_file(), "live fetch cache should be written");
+
+        let second = run_stage_in_workspace_with_config("fetch", workspace_root.as_path(), &config)
+            .expect("second live fetch should be served from cache");
+        assert_eq!(first, second);
+
+        let artifact_path = workspace_root.join("output/raw/fetch_snapshot.json");
+        assert!(artifact_path.is_file(), "fetch artifact should exist");
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let snapshot: figma_client::RawFigmaSnapshot =
+            serde_json::from_str(&artifact).expect("artifact should be valid raw snapshot json");
+        assert_eq!(
+            snapshot.payload,
+            serde_json::json!({
+                "document": {
+                    "id": "123:456",
+                    "name": "Cached Root",
                     "type": "FRAME",
                     "children": []
                 }

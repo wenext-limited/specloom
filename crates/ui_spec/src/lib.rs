@@ -427,7 +427,26 @@ mod tests {
         assert!(decoded.root.children.is_empty());
         assert_eq!(decoded.root.style.corner_radius, None);
 
-        let style = root
+        assert!(
+            !root.contains_key("style"),
+            "style should be omitted when all style fields are default"
+        );
+
+        let encoded_with_corner_radius = serde_json::to_value(UiSpec {
+            root: UiNode {
+                style: UiStyle {
+                    corner_radius: Some(8.0),
+                    ..UiStyle::default()
+                },
+                ..UiNode::default()
+            },
+            ..UiSpec::default()
+        })
+        .expect("ui spec with non-default style should serialize");
+        let style = encoded_with_corner_radius
+            .get("root")
+            .and_then(serde_json::Value::as_object)
+            .expect("root should serialize as object")
             .get("style")
             .and_then(serde_json::Value::as_object)
             .expect("style should serialize as object");
