@@ -47,6 +47,41 @@ pub enum UiSpec {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         children: Vec<UiSpec>,
     },
+    Button {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    ScrollView {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    HStack {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    VStack {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
+    ZStack {
+        id: String,
+        name: String,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<UiSpec>,
+    },
 }
 
 impl Default for UiSpec {
@@ -80,7 +115,12 @@ impl UiSpec {
             | Self::Text { id, .. }
             | Self::Image { id, .. }
             | Self::Shape { id, .. }
-            | Self::Vector { id, .. } => id.as_str(),
+            | Self::Vector { id, .. }
+            | Self::Button { id, .. }
+            | Self::ScrollView { id, .. }
+            | Self::HStack { id, .. }
+            | Self::VStack { id, .. }
+            | Self::ZStack { id, .. } => id.as_str(),
         }
     }
 
@@ -91,7 +131,12 @@ impl UiSpec {
             | Self::Text { children, .. }
             | Self::Image { children, .. }
             | Self::Shape { children, .. }
-            | Self::Vector { children, .. } => children.as_slice(),
+            | Self::Vector { children, .. }
+            | Self::Button { children, .. }
+            | Self::ScrollView { children, .. }
+            | Self::HStack { children, .. }
+            | Self::VStack { children, .. }
+            | Self::ZStack { children, .. } => children.as_slice(),
         }
     }
 
@@ -103,6 +148,11 @@ impl UiSpec {
             Self::Image { .. } => NodeType::Image,
             Self::Shape { .. } => NodeType::Shape,
             Self::Vector { .. } => NodeType::Vector,
+            Self::Button { .. } => NodeType::Button,
+            Self::ScrollView { .. } => NodeType::ScrollView,
+            Self::HStack { .. } => NodeType::HStack,
+            Self::VStack { .. } => NodeType::VStack,
+            Self::ZStack { .. } => NodeType::ZStack,
         }
     }
 }
@@ -115,4 +165,9 @@ pub enum NodeType {
     Image,
     Shape,
     Vector,
+    Button,
+    ScrollView,
+    HStack,
+    VStack,
+    ZStack,
 }

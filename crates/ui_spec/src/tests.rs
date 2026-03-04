@@ -219,6 +219,158 @@ fn transform_plan_validate_rejects_non_replace_mode_with_children() {
 }
 
 #[test]
+fn apply_transform_plan_drop_removes_children_and_sets_button_type() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "CTA".to_string(),
+            text: String::new(),
+            children: vec![UiSpec::Text {
+                id: "1:3".to_string(),
+                name: "Buy".to_string(),
+                children: Vec::new(),
+            }],
+        }],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::Button,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Drop,
+                children: Vec::new(),
+            },
+            confidence: 0.9,
+            reason: "Leaf control".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    let button = &transformed.children()[0];
+    assert_eq!(button.node_type(), NodeType::Button);
+    assert!(button.children().is_empty());
+}
+
+#[test]
+fn apply_transform_plan_keep_preserves_children_and_sets_hstack_type() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "Row".to_string(),
+            text: String::new(),
+            children: vec![
+                UiSpec::Text {
+                    id: "1:3".to_string(),
+                    name: "Left".to_string(),
+                    children: Vec::new(),
+                },
+                UiSpec::Text {
+                    id: "1:4".to_string(),
+                    name: "Right".to_string(),
+                    children: Vec::new(),
+                },
+            ],
+        }],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::HStack,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            confidence: 0.78,
+            reason: "Horizontal alignment".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    let row = &transformed.children()[0];
+    assert_eq!(row.node_type(), NodeType::HStack);
+    assert_eq!(row.children().len(), 2);
+    assert_eq!(row.children()[0].id(), "1:3");
+    assert_eq!(row.children()[1].id(), "1:4");
+}
+
+#[test]
+fn apply_transform_plan_replace_with_rewires_children_order() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "Scroll Region".to_string(),
+            text: String::new(),
+            children: vec![
+                UiSpec::Text {
+                    id: "1:3".to_string(),
+                    name: "A".to_string(),
+                    children: Vec::new(),
+                },
+                UiSpec::Image {
+                    id: "1:4".to_string(),
+                    name: "Preview".to_string(),
+                    children: Vec::new(),
+                },
+            ],
+        }],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::ScrollView,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::ReplaceWith,
+                children: vec!["1:4".to_string()],
+            },
+            confidence: 0.74,
+            reason: "Content subset".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    let scroll = &transformed.children()[0];
+    assert_eq!(scroll.node_type(), NodeType::ScrollView);
+    assert_eq!(scroll.children().len(), 1);
+    assert_eq!(scroll.children()[0].id(), "1:4");
+}
+
+#[test]
+fn build_pre_layout_spec_keeps_single_text_child_without_collapse() {
+    let normalized = figma_normalizer::NormalizationOutput {
+        document: figma_normalizer::NormalizedDocument {
+            schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+            source: figma_normalizer::NormalizedSource {
+                file_key: "abc123".to_string(),
+                root_node_id: "1:1".to_string(),
+                figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+            },
+            nodes: vec![
+                container_node("1:1", vec!["1:2".to_string()]),
+                text_node("1:2"),
+            ],
+        },
+        warnings: Vec::new(),
+    };
+
+    let pre_layout = build_pre_layout_spec(&normalized).expect("build should succeed");
+    assert_eq!(pre_layout.node_type(), NodeType::Container);
+    assert_eq!(pre_layout.children().len(), 1);
+    assert_eq!(pre_layout.children()[0].node_type(), NodeType::Text);
+}
+
+#[test]
 fn build_ui_spec_preserves_original_node_ids() {
     let normalized = figma_normalizer::NormalizationOutput {
         document: figma_normalizer::NormalizedDocument {

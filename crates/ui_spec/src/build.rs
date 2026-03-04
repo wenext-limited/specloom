@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::{NodeType, UiSpec};
+use crate::{
+    ChildPolicyMode, NodeType, SuggestedNodeType, TransformDecision, TransformPlan, UiSpec,
+};
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum UiSpecBuildError {
@@ -8,6 +10,45 @@ pub enum UiSpecBuildError {
     MissingNormalizedRootNode(String),
     #[error("missing normalized node: {0}")]
     MissingNormalizedNode(String),
+    #[error("invalid transform plan: {0}")]
+    InvalidTransformPlan(String),
+    #[error("replacement child missing after validation for node {node_id}: {child_id}")]
+    ReplacementChildMissingAfterValidation { node_id: String, child_id: String },
+}
+
+pub fn build_pre_layout_spec(
+    normalized: &figma_normalizer::NormalizationOutput,
+) -> Result<UiSpec, UiSpecBuildError> {
+    let nodes_by_id = normalized
+        .document
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+
+    let root_node_id = normalized.document.source.root_node_id.clone();
+    if !nodes_by_id.contains_key(root_node_id.as_str()) {
+        return Err(UiSpecBuildError::MissingNormalizedRootNode(root_node_id));
+    }
+
+    build_pre_layout_node(root_node_id.as_str(), &nodes_by_id)
+}
+
+pub fn apply_transform_plan(
+    pre_layout: &UiSpec,
+    transform_plan: &TransformPlan,
+) -> Result<UiSpec, UiSpecBuildError> {
+    transform_plan
+        .validate_against_pre_layout(pre_layout)
+        .map_err(|err| UiSpecBuildError::InvalidTransformPlan(err.to_string()))?;
+
+    let decisions_by_node = transform_plan
+        .decisions
+        .iter()
+        .map(|decision| (decision.node_id.as_str(), decision))
+        .collect::<BTreeMap<_, _>>();
+
+    apply_transform_node(pre_layout, &decisions_by_node)
 }
 
 pub fn build_ui_spec(
@@ -27,6 +68,36 @@ pub fn build_ui_spec(
     }
 
     build_ui_spec_node(root_node_id.as_str(), &nodes_by_id)
+}
+
+fn build_pre_layout_node(
+    node_id: &str,
+    nodes_by_id: &BTreeMap<&str, &figma_normalizer::NormalizedNode>,
+) -> Result<UiSpec, UiSpecBuildError> {
+    let node = nodes_by_id
+        .get(node_id)
+        .copied()
+        .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(node_id.to_string()))?;
+
+    let mut children = Vec::new();
+    for child_id in &node.children {
+        let child = nodes_by_id
+            .get(child_id.as_str())
+            .copied()
+            .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(child_id.clone()))?;
+        if !child.visible {
+            continue;
+        }
+        children.push(build_pre_layout_node(child_id.as_str(), nodes_by_id)?);
+    }
+
+    Ok(ui_spec_from_node_type(
+        map_node_type(node),
+        node.id.clone(),
+        node.name.clone(),
+        children,
+        String::new(),
+    ))
 }
 
 fn build_ui_spec_node(
@@ -149,7 +220,215 @@ fn build_ui_spec_node(
             name: node.name.clone(),
             children,
         },
+        NodeType::Button => UiSpec::Button {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::ScrollView => UiSpec::ScrollView {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::HStack => UiSpec::HStack {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::VStack => UiSpec::VStack {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
+        NodeType::ZStack => UiSpec::ZStack {
+            id: node.id.clone(),
+            name: node.name.clone(),
+            children,
+        },
     })
+}
+
+fn apply_transform_node(
+    node: &UiSpec,
+    decisions_by_node: &BTreeMap<&str, &TransformDecision>,
+) -> Result<UiSpec, UiSpecBuildError> {
+    let transformed_children = node
+        .children()
+        .iter()
+        .map(|child| apply_transform_node(child, decisions_by_node))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if let Some(decision) = decisions_by_node.get(node.id()) {
+        let transformed_children = match decision.child_policy.mode {
+            ChildPolicyMode::Keep => transformed_children,
+            ChildPolicyMode::Drop => Vec::new(),
+            ChildPolicyMode::ReplaceWith => {
+                let mut children_by_id = transformed_children
+                    .into_iter()
+                    .map(|child| (child.id().to_string(), child))
+                    .collect::<BTreeMap<_, _>>();
+                let mut selected = Vec::with_capacity(decision.child_policy.children.len());
+                for child_id in &decision.child_policy.children {
+                    let child = children_by_id.remove(child_id).ok_or_else(|| {
+                        UiSpecBuildError::ReplacementChildMissingAfterValidation {
+                            node_id: decision.node_id.clone(),
+                            child_id: child_id.clone(),
+                        }
+                    })?;
+                    selected.push(child);
+                }
+                selected
+            }
+        };
+
+        return Ok(ui_spec_from_suggested_type(
+            decision.suggested_type,
+            node.id().to_string(),
+            node_name(node).to_string(),
+            transformed_children,
+            container_text(node),
+        ));
+    }
+
+    Ok(rebuild_node_with_children(node, transformed_children))
+}
+
+fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {
+    match node {
+        UiSpec::Container { id, name, text, .. } => UiSpec::Container {
+            id: id.clone(),
+            name: name.clone(),
+            text: text.clone(),
+            children,
+        },
+        UiSpec::Instance { id, name, .. } => UiSpec::Instance {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::Text { id, name, .. } => UiSpec::Text {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::Image { id, name, .. } => UiSpec::Image {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::Shape { id, name, .. } => UiSpec::Shape {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::Vector { id, name, .. } => UiSpec::Vector {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::Button { id, name, .. } => UiSpec::Button {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::ScrollView { id, name, .. } => UiSpec::ScrollView {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::HStack { id, name, .. } => UiSpec::HStack {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::VStack { id, name, .. } => UiSpec::VStack {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+        UiSpec::ZStack { id, name, .. } => UiSpec::ZStack {
+            id: id.clone(),
+            name: name.clone(),
+            children,
+        },
+    }
+}
+
+fn ui_spec_from_suggested_type(
+    suggested_type: SuggestedNodeType,
+    id: String,
+    name: String,
+    children: Vec<UiSpec>,
+    text: String,
+) -> UiSpec {
+    match suggested_type {
+        SuggestedNodeType::Container => UiSpec::Container {
+            id,
+            name,
+            text,
+            children,
+        },
+        SuggestedNodeType::Instance => UiSpec::Instance { id, name, children },
+        SuggestedNodeType::Text => UiSpec::Text { id, name, children },
+        SuggestedNodeType::Image => UiSpec::Image { id, name, children },
+        SuggestedNodeType::Shape => UiSpec::Shape { id, name, children },
+        SuggestedNodeType::Vector => UiSpec::Vector { id, name, children },
+        SuggestedNodeType::Button => UiSpec::Button { id, name, children },
+        SuggestedNodeType::ScrollView => UiSpec::ScrollView { id, name, children },
+        SuggestedNodeType::HStack => UiSpec::HStack { id, name, children },
+        SuggestedNodeType::VStack => UiSpec::VStack { id, name, children },
+        SuggestedNodeType::ZStack => UiSpec::ZStack { id, name, children },
+    }
+}
+
+fn ui_spec_from_node_type(
+    node_type: NodeType,
+    id: String,
+    name: String,
+    children: Vec<UiSpec>,
+    text: String,
+) -> UiSpec {
+    match node_type {
+        NodeType::Container => UiSpec::Container {
+            id,
+            name,
+            text,
+            children,
+        },
+        NodeType::Instance => UiSpec::Instance { id, name, children },
+        NodeType::Text => UiSpec::Text { id, name, children },
+        NodeType::Image => UiSpec::Image { id, name, children },
+        NodeType::Shape => UiSpec::Shape { id, name, children },
+        NodeType::Vector => UiSpec::Vector { id, name, children },
+        NodeType::Button => UiSpec::Button { id, name, children },
+        NodeType::ScrollView => UiSpec::ScrollView { id, name, children },
+        NodeType::HStack => UiSpec::HStack { id, name, children },
+        NodeType::VStack => UiSpec::VStack { id, name, children },
+        NodeType::ZStack => UiSpec::ZStack { id, name, children },
+    }
+}
+
+fn node_name(node: &UiSpec) -> &str {
+    match node {
+        UiSpec::Container { name, .. }
+        | UiSpec::Instance { name, .. }
+        | UiSpec::Text { name, .. }
+        | UiSpec::Image { name, .. }
+        | UiSpec::Shape { name, .. }
+        | UiSpec::Vector { name, .. }
+        | UiSpec::Button { name, .. }
+        | UiSpec::ScrollView { name, .. }
+        | UiSpec::HStack { name, .. }
+        | UiSpec::VStack { name, .. }
+        | UiSpec::ZStack { name, .. } => name.as_str(),
+    }
+}
+
+fn container_text(node: &UiSpec) -> String {
+    match node {
+        UiSpec::Container { text, .. } => text.clone(),
+        _ => String::new(),
+    }
 }
 
 fn single_text_child_name(children: &[UiSpec]) -> Option<String> {
