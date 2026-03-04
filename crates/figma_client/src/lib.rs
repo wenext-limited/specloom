@@ -215,6 +215,7 @@ fn build_snapshot_from_live_nodes_payload(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use std::io::{Read, Write};
 
     #[test]
     fn fetch_nodes_request_rejects_missing_file_key() {
@@ -409,5 +410,132 @@ mod tests {
             err.to_string(),
             "invalid fetch request: figma_token is required for live fetch"
         );
+    }
+
+    #[test]
+    fn fetch_snapshot_live_with_base_url_sends_auth_header_and_maps_success() {
+        let (base_url, request_rx, server_thread) = start_single_response_server(
+            "200 OK",
+            r#"{
+                "nodes": {
+                    "123:456": {
+                        "document": {
+                            "id": "123:456",
+                            "name": "Live Root"
+                        }
+                    }
+                }
+            }"#,
+        );
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+
+        let snapshot =
+            super::fetch_snapshot_live_with_base_url(&request, "secret-token", &base_url)
+                .expect("live fetch should succeed");
+        let raw_request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("mock server should receive request");
+        server_thread.join().expect("server thread should finish");
+
+        let lower_request = raw_request.to_ascii_lowercase();
+        assert!(raw_request.starts_with("GET /v1/files/abc123/nodes?ids=123%3A456 HTTP/1.1"));
+        assert!(lower_request.contains("x-figma-token: secret-token"));
+        assert_eq!(
+            snapshot.payload,
+            serde_json::json!({
+                "document": {
+                    "id": "123:456",
+                    "name": "Live Root"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn fetch_snapshot_live_maps_unauthorized_status() {
+        let (base_url, _request_rx, server_thread) =
+            start_single_response_server("401 Unauthorized", "Unauthorized");
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+
+        let err = super::fetch_snapshot_live_with_base_url(&request, "secret-token", &base_url)
+            .expect_err("unauthorized response should fail");
+        server_thread.join().expect("server thread should finish");
+
+        assert_eq!(err.to_string(), "figma api unauthorized");
+    }
+
+    #[test]
+    fn fetch_snapshot_live_maps_non_success_status_with_body() {
+        let (base_url, _request_rx, server_thread) =
+            start_single_response_server("404 Not Found", "No file");
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+
+        let err = super::fetch_snapshot_live_with_base_url(&request, "secret-token", &base_url)
+            .expect_err("404 response should fail");
+        server_thread.join().expect("server thread should finish");
+
+        assert_eq!(
+            err.to_string(),
+            "figma api returned non-success status 404: No file"
+        );
+    }
+
+    fn start_single_response_server(
+        status_line: &str,
+        body: &str,
+    ) -> (
+        String,
+        std::sync::mpsc::Receiver<String>,
+        std::thread::JoinHandle<()>,
+    ) {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock server should expose local address");
+        let (request_tx, request_rx) = std::sync::mpsc::channel::<String>();
+        let status_line = status_line.to_string();
+        let body = body.to_string();
+
+        let server_thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("mock server should accept one request");
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .expect("mock server should set read timeout");
+
+            let mut request_bytes = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let bytes_read = stream
+                    .read(&mut buffer)
+                    .expect("mock server should read request bytes");
+                if bytes_read == 0 {
+                    break;
+                }
+                request_bytes.extend_from_slice(&buffer[..bytes_read]);
+                if request_bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let request = String::from_utf8_lossy(&request_bytes).to_string();
+            let _ = request_tx.send(request);
+
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n{body}",
+                content_length = body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("mock server should write response");
+            stream.flush().expect("mock server should flush response");
+        });
+
+        (format!("http://{address}"), request_rx, server_thread)
     }
 }
