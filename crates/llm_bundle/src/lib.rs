@@ -10,7 +10,7 @@ pub struct LlmBundle {
     pub bundle_version: String,
     pub target: String,
     pub prompt_template_version: String,
-    pub blueprint: BundleInputRef,
+    pub ui_spec: BundleInputRef,
     pub asset_manifest: BundleInputRef,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -53,7 +53,7 @@ pub enum LlmBundleError {
 
 pub fn build_bundle(
     target: &str,
-    blueprint_path: &Path,
+    ui_spec_path: &Path,
     asset_manifest_path: &Path,
     warnings_summary: Vec<BundleWarningSummary>,
     prompt_template_version: &str,
@@ -68,14 +68,14 @@ pub fn build_bundle(
         return Err(LlmBundleError::MissingPromptTemplateVersion);
     }
 
-    let blueprint = bundle_input_ref(blueprint_path)?;
+    let ui_spec = bundle_input_ref(ui_spec_path)?;
     let asset_manifest = bundle_input_ref(asset_manifest_path)?;
 
     Ok(LlmBundle {
         bundle_version: LLM_BUNDLE_VERSION.to_string(),
         target: target.to_string(),
         prompt_template_version: prompt_template_version.to_string(),
-        blueprint,
+        ui_spec,
         asset_manifest,
         warnings_summary,
     })
@@ -109,11 +109,11 @@ mod tests {
     #[test]
     fn same_inputs_produce_same_hashes() {
         let workspace_root = unique_test_workspace_root("same_inputs_produce_same_hashes");
-        let blueprint_path = workspace_root.join("ui_blueprint.yaml");
+        let ui_spec_path = workspace_root.join("ui_spec.json");
         let assets_path = workspace_root.join("asset_manifest.json");
         std::fs::write(
-            &blueprint_path,
-            "version: ui_blueprint/1.0\ndocument:\n  file_key: abc123\n",
+            &ui_spec_path,
+            "{\n  \"spec_version\": \"1.0\",\n  \"source\": {\"file_key\": \"abc123\", \"root_node_id\": \"0:1\", \"generator_version\": \"0.1.0\"},\n  \"root\": {\"id\": \"0:1\", \"name\": \"Root\", \"kind\": \"container\", \"layout\": {\"strategy\": \"absolute\", \"item_spacing\": 0.0}, \"style\": {\"opacity\": 1.0, \"corner_radius\": null}, \"children\": []},\n  \"warnings\": []\n}\n",
         )
         .unwrap();
         std::fs::write(
@@ -124,7 +124,7 @@ mod tests {
 
         let first = build_bundle(
             "swiftui",
-            blueprint_path.as_path(),
+            ui_spec_path.as_path(),
             assets_path.as_path(),
             Vec::new(),
             "v1",
@@ -132,14 +132,14 @@ mod tests {
         .unwrap();
         let second = build_bundle(
             "swiftui",
-            blueprint_path.as_path(),
+            ui_spec_path.as_path(),
             assets_path.as_path(),
             Vec::new(),
             "v1",
         )
         .unwrap();
 
-        assert_eq!(first.blueprint.sha256, second.blueprint.sha256);
+        assert_eq!(first.ui_spec.sha256, second.ui_spec.sha256);
         assert_eq!(first.asset_manifest.sha256, second.asset_manifest.sha256);
 
         let _ = std::fs::remove_dir_all(&workspace_root);
@@ -148,11 +148,11 @@ mod tests {
     #[test]
     fn warning_summary_is_preserved() {
         let workspace_root = unique_test_workspace_root("warning_summary_is_preserved");
-        let blueprint_path = workspace_root.join("ui_blueprint.yaml");
+        let ui_spec_path = workspace_root.join("ui_spec.json");
         let assets_path = workspace_root.join("asset_manifest.json");
         std::fs::write(
-            &blueprint_path,
-            "version: ui_blueprint/1.0\ndocument:\n  file_key: abc123\n",
+            &ui_spec_path,
+            "{\n  \"spec_version\": \"1.0\",\n  \"source\": {\"file_key\": \"abc123\", \"root_node_id\": \"0:1\", \"generator_version\": \"0.1.0\"},\n  \"root\": {\"id\": \"0:1\", \"name\": \"Root\", \"kind\": \"container\", \"layout\": {\"strategy\": \"absolute\", \"item_spacing\": 0.0}, \"style\": {\"opacity\": 1.0, \"corner_radius\": null}, \"children\": []},\n  \"warnings\": []\n}\n",
         )
         .unwrap();
         std::fs::write(
@@ -173,7 +173,7 @@ mod tests {
         ];
         let bundle = build_bundle(
             "swiftui",
-            blueprint_path.as_path(),
+            ui_spec_path.as_path(),
             assets_path.as_path(),
             warnings.clone(),
             "v1",

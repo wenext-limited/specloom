@@ -20,8 +20,6 @@ pub enum PipelineError {
     Normalizer(String),
     #[error("ui spec build error: {0}")]
     UiSpecBuild(String),
-    #[error("swiftui ast build error: {0}")]
-    SwiftUiAstBuild(String),
     #[error("llm bundle error: {0}")]
     LlmBundle(String),
     #[error("llm code generation error: {0}")]
@@ -124,8 +122,6 @@ const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.json";
-const BLUEPRINT_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_blueprint.yaml";
-const SWIFT_ARTIFACT_OUTPUT_DIR: &str = "output/swift";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const REPORT_ARTIFACT_RELATIVE_PATH: &str = "output/reports/review_report.json";
 const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/llm/llm_bundle.json";
@@ -147,7 +143,6 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         NORMALIZED_ARTIFACT_RELATIVE_PATH => Some("normalize"),
         INFERRED_ARTIFACT_RELATIVE_PATH => Some("infer-layout"),
         SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
-        BLUEPRINT_ARTIFACT_RELATIVE_PATH => Some("build-ui-blueprint"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
         REPORT_ARTIFACT_RELATIVE_PATH => Some("report"),
         LLM_BUNDLE_ARTIFACT_RELATIVE_PATH => Some("prepare-llm-bundle"),
@@ -155,7 +150,7 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
     }
 }
 
-const PIPELINE_STAGES: [PipelineStageDefinition; 9] = [
+const PIPELINE_STAGES: [PipelineStageDefinition; 7] = [
     PipelineStageDefinition {
         name: "fetch",
         output_dir: "output/raw",
@@ -173,14 +168,6 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 9] = [
         output_dir: "output/specs",
     },
     PipelineStageDefinition {
-        name: "build-ui-blueprint",
-        output_dir: "output/specs",
-    },
-    PipelineStageDefinition {
-        name: "gen-swiftui",
-        output_dir: "output/swift",
-    },
-    PipelineStageDefinition {
         name: "export-assets",
         output_dir: "output/assets",
     },
@@ -194,12 +181,11 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 9] = [
     },
 ];
 
-const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 7] = [
+const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 6] = [
     "fetch",
     "normalize",
     "infer-layout",
     "build-spec",
-    "build-ui-blueprint",
     "export-assets",
     "report",
 ];
@@ -321,8 +307,6 @@ pub fn run_stage_in_workspace_with_config(
         "normalize" => Some(run_normalize_stage(workspace_root)?),
         "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
-        "build-ui-blueprint" => Some(run_build_ui_blueprint_stage(workspace_root)?),
-        "gen-swiftui" => Some(run_gen_swiftui_stage(workspace_root)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
         "report" => Some(run_report_stage(workspace_root)?),
         "prepare-llm-bundle" => Some(run_prepare_llm_bundle_stage(workspace_root)?),
@@ -451,52 +435,6 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
     Ok(SPEC_ARTIFACT_RELATIVE_PATH.to_string())
 }
 
-fn run_build_ui_blueprint_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
-    if !spec_path.is_file() {
-        return Err(PipelineError::MissingInputArtifact(
-            SPEC_ARTIFACT_RELATIVE_PATH.to_string(),
-        ));
-    }
-
-    let spec_artifact = std::fs::read_to_string(&spec_path).map_err(io_error)?;
-    let spec: ui_spec::UiSpec =
-        serde_json::from_str(&spec_artifact).map_err(serialization_error)?;
-    let blueprint = ui_blueprint::build_ui_blueprint(&spec);
-
-    let blueprint_path = workspace_root.join(BLUEPRINT_ARTIFACT_RELATIVE_PATH);
-    if let Some(parent) = blueprint_path.parent() {
-        std::fs::create_dir_all(parent).map_err(io_error)?;
-    }
-    let encoded = blueprint.to_yaml_string().map_err(blueprint_yaml_error)?;
-    std::fs::write(&blueprint_path, encoded).map_err(io_error)?;
-
-    Ok(BLUEPRINT_ARTIFACT_RELATIVE_PATH.to_string())
-}
-
-fn run_gen_swiftui_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
-    if !spec_path.is_file() {
-        return Err(PipelineError::MissingInputArtifact(
-            SPEC_ARTIFACT_RELATIVE_PATH.to_string(),
-        ));
-    }
-
-    let spec_artifact = std::fs::read_to_string(&spec_path).map_err(io_error)?;
-    let spec: ui_spec::UiSpec =
-        serde_json::from_str(&spec_artifact).map_err(serialization_error)?;
-    let ast = swiftui_ast::build_ast_from_ui_spec(&spec).map_err(swiftui_ast_build_error)?;
-    let rendered = swiftui_codegen::render_swift_file(&ast);
-
-    let output_dir = workspace_root.join(SWIFT_ARTIFACT_OUTPUT_DIR);
-    std::fs::create_dir_all(&output_dir).map_err(io_error)?;
-    let relative_path = format!("{SWIFT_ARTIFACT_OUTPUT_DIR}/{}.swift", ast.view_name);
-    let output_path = workspace_root.join(relative_path.as_str());
-    std::fs::write(&output_path, rendered).map_err(io_error)?;
-
-    Ok(relative_path)
-}
-
 fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
     if !normalized_path.is_file() {
@@ -577,10 +515,10 @@ fn run_report_stage(workspace_root: &Path) -> Result<String, PipelineError> {
 }
 
 fn run_prepare_llm_bundle_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let blueprint_path = workspace_root.join(BLUEPRINT_ARTIFACT_RELATIVE_PATH);
-    if !blueprint_path.is_file() {
+    let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
+    if !spec_path.is_file() {
         return Err(PipelineError::MissingInputArtifact(
-            BLUEPRINT_ARTIFACT_RELATIVE_PATH.to_string(),
+            SPEC_ARTIFACT_RELATIVE_PATH.to_string(),
         ));
     }
     let assets_path = workspace_root.join(ASSET_MANIFEST_RELATIVE_PATH);
@@ -590,10 +528,10 @@ fn run_prepare_llm_bundle_stage(workspace_root: &Path) -> Result<String, Pipelin
         ));
     }
 
-    let blueprint_artifact = std::fs::read_to_string(&blueprint_path).map_err(io_error)?;
-    let blueprint: ui_blueprint::UiBlueprint =
-        serde_yaml::from_str(&blueprint_artifact).map_err(yaml_deserialization_error)?;
-    let warnings_summary = blueprint
+    let spec_artifact = std::fs::read_to_string(&spec_path).map_err(io_error)?;
+    let spec: ui_spec::UiSpec =
+        serde_json::from_str(&spec_artifact).map_err(serialization_error)?;
+    let warnings_summary = spec
         .warnings
         .iter()
         .map(|warning| llm_bundle::BundleWarningSummary {
@@ -604,13 +542,13 @@ fn run_prepare_llm_bundle_stage(workspace_root: &Path) -> Result<String, Pipelin
 
     let mut bundle = llm_bundle::build_bundle(
         "target-agnostic",
-        blueprint_path.as_path(),
+        spec_path.as_path(),
         assets_path.as_path(),
         warnings_summary,
         "v1",
     )
     .map_err(llm_bundle_error)?;
-    bundle.blueprint.path = BLUEPRINT_ARTIFACT_RELATIVE_PATH.to_string();
+    bundle.ui_spec.path = SPEC_ARTIFACT_RELATIVE_PATH.to_string();
     bundle.asset_manifest.path = ASSET_MANIFEST_RELATIVE_PATH.to_string();
 
     let output_path = workspace_root.join(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH);
@@ -659,18 +597,6 @@ fn ui_spec_build_error(err: ui_spec::UiSpecBuildError) -> PipelineError {
     PipelineError::UiSpecBuild(err.to_string())
 }
 
-fn swiftui_ast_build_error(err: swiftui_ast::SwiftUiAstBuildError) -> PipelineError {
-    PipelineError::SwiftUiAstBuild(err.to_string())
-}
-
-fn blueprint_yaml_error(err: ui_blueprint::BlueprintError) -> PipelineError {
-    PipelineError::Serialization(err.to_string())
-}
-
-fn yaml_deserialization_error(err: serde_yaml::Error) -> PipelineError {
-    PipelineError::Serialization(err.to_string())
-}
-
 fn llm_bundle_error(err: llm_bundle::LlmBundleError) -> PipelineError {
     PipelineError::LlmBundle(err.to_string())
 }
@@ -695,8 +621,6 @@ mod tests {
                 "normalize",
                 "infer-layout",
                 "build-spec",
-                "build-ui-blueprint",
-                "gen-swiftui",
                 "export-assets",
                 "report",
                 "prepare-llm-bundle",
@@ -767,8 +691,6 @@ mod tests {
                 ("normalize", "output/normalized"),
                 ("infer-layout", "output/inferred"),
                 ("build-spec", "output/specs"),
-                ("build-ui-blueprint", "output/specs"),
-                ("gen-swiftui", "output/swift"),
                 ("export-assets", "output/assets"),
                 ("report", "output/reports"),
                 ("prepare-llm-bundle", "output/llm"),
@@ -1024,80 +946,6 @@ mod tests {
     }
 
     #[test]
-    fn run_stage_build_ui_blueprint_writes_yaml_artifact() {
-        let workspace_root =
-            unique_test_workspace_root("run_stage_build_ui_blueprint_writes_yaml_artifact");
-
-        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
-        run_stage_in_workspace("normalize", workspace_root.as_path())
-            .expect("normalize should run first");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run first");
-        run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run first");
-        let result = run_stage_in_workspace("build-ui-blueprint", workspace_root.as_path())
-            .expect("build-ui-blueprint should run");
-
-        assert_eq!(
-            result,
-            StageExecutionResult {
-                stage_name: "build-ui-blueprint",
-                output_dir: "output/specs",
-                artifact_path: Some("output/specs/ui_blueprint.yaml".to_string()),
-            }
-        );
-
-        let artifact_path = workspace_root.join("output/specs/ui_blueprint.yaml");
-        assert!(
-            artifact_path.is_file(),
-            "ui blueprint artifact should exist"
-        );
-
-        let artifact =
-            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
-        assert!(artifact.contains("version: ui_blueprint/1.0"));
-        assert!(artifact.contains("file_key: fixture-file-key"));
-        assert!(artifact.contains("root_node_id: 0:1"));
-
-        let _ = std::fs::remove_dir_all(&workspace_root);
-    }
-
-    #[test]
-    fn run_stage_gen_swiftui_writes_swift_artifact() {
-        let workspace_root =
-            unique_test_workspace_root("run_stage_gen_swiftui_writes_swift_artifact");
-
-        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
-        run_stage_in_workspace("normalize", workspace_root.as_path())
-            .expect("normalize should run first");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run first");
-        run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run first");
-        let result = run_stage_in_workspace("gen-swiftui", workspace_root.as_path())
-            .expect("gen-swiftui should run");
-
-        assert_eq!(
-            result,
-            StageExecutionResult {
-                stage_name: "gen-swiftui",
-                output_dir: "output/swift",
-                artifact_path: Some("output/swift/FixtureRootView.swift".to_string()),
-            }
-        );
-
-        let artifact_path = workspace_root.join("output/swift/FixtureRootView.swift");
-        assert!(artifact_path.is_file(), "swift artifact should exist");
-
-        let artifact =
-            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
-        assert!(artifact.contains("import SwiftUI"));
-        assert!(artifact.contains("struct FixtureRootView: View"));
-
-        let _ = std::fs::remove_dir_all(&workspace_root);
-    }
-
-    #[test]
     fn run_stage_export_assets_writes_asset_manifest_artifact() {
         let workspace_root =
             unique_test_workspace_root("run_stage_export_assets_writes_asset_manifest_artifact");
@@ -1152,8 +1000,6 @@ mod tests {
             .expect("infer-layout should run first");
         run_stage_in_workspace("build-spec", workspace_root.as_path())
             .expect("build-spec should run first");
-        run_stage_in_workspace("build-ui-blueprint", workspace_root.as_path())
-            .expect("build-ui-blueprint should run first");
         run_stage_in_workspace("export-assets", workspace_root.as_path())
             .expect("export-assets should run first");
 
@@ -1177,7 +1023,7 @@ mod tests {
         assert_eq!(bundle.bundle_version, llm_bundle::LLM_BUNDLE_VERSION);
         assert_eq!(bundle.target, "target-agnostic");
         assert_eq!(bundle.prompt_template_version, "v1");
-        assert_eq!(bundle.blueprint.path, "output/specs/ui_blueprint.yaml");
+        assert_eq!(bundle.ui_spec.path, "output/specs/ui_spec.json");
         assert_eq!(
             bundle.asset_manifest.path,
             "output/assets/asset_manifest.json"
@@ -1203,7 +1049,6 @@ mod tests {
                 "normalize",
                 "infer-layout",
                 "build-spec",
-                "build-ui-blueprint",
                 "export-assets",
                 "report",
             ]

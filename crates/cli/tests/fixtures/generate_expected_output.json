@@ -21,11 +21,6 @@
       "artifact": "output/specs/ui_spec.json"
     },
     {
-      "stage": "build-ui-blueprint",
-      "output": "output/specs",
-      "artifact": "output/specs/ui_blueprint.yaml"
-    },
-    {
       "stage": "export-assets",
       "output": "output/assets",
       "artifact": "output/assets/asset_manifest.json"

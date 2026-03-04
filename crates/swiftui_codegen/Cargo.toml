@@ -1,7 +1,0 @@
-[package]
-name = "swiftui_codegen"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-swiftui_ast = { path = "../swiftui_ast" }

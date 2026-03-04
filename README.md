@@ -1,11 +1,11 @@
 # Forge
 
-Figma node tree to UI Blueprint + LLM UI generation workspace in Rust 2024.
+Figma node tree to UI spec + LLM UI generation workspace in Rust 2024.
 
 This repository implements a deterministic, stage-based pipeline that produces:
 
 1. normalized/intermediate JSON artifacts
-2. `ui_blueprint.yaml` for LLM-oriented generation
+2. `ui_spec.json` for LLM-oriented generation input
 3. asset manifest metadata
 4. review report warnings and summaries
 5. optional LLM bundle and generated UI code artifacts
@@ -62,7 +62,6 @@ Generated artifacts:
 | `normalize` | `output/normalized` | `output/normalized/normalized_document.json` |
 | `infer-layout` | `output/inferred` | `output/inferred/layout_inference.json` |
 | `build-spec` | `output/specs` | `output/specs/ui_spec.json` |
-| `build-ui-blueprint` | `output/specs` | `output/specs/ui_blueprint.yaml` |
 | `export-assets` | `output/assets` | `output/assets/asset_manifest.json` |
 | `report` | `output/reports` | `output/reports/review_report.json` |
 | `prepare-llm-bundle` (on demand) | `output/llm` | `output/llm/llm_bundle.json` |
@@ -82,7 +81,6 @@ Run one stage:
 ```bash
 cargo run -p cli -- run-stage fetch
 cargo run -p cli -- run-stage normalize --output json
-cargo run -p cli -- run-stage build-ui-blueprint
 cargo run -p cli -- run-stage prepare-llm-bundle
 ```
 
@@ -131,9 +129,9 @@ cargo run -p cli -- generate-ui --target swiftui --model gpt-5
 
 Notes:
 
-1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-ui-blueprint`, `gen-swiftui` (legacy), `export-assets`, `report`, and `prepare-llm-bundle`.
+1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `export-assets`, `report`, and `prepare-llm-bundle`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
-3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-ui-blueprint`, `export-assets`, and `report`.
+3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `export-assets`, and `report`.
 4. `generate-ui` requires `OPENAI_API_KEY` or `--api-key`.
 
 ## Scope

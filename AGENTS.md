@@ -7,7 +7,7 @@ Follow these rules for all changes unless the user explicitly overrides them.
 
 ## Project Context
 
-This is a Rust 2024 workspace for a Figma node tree to SwiftUI pipeline.
+This is a Rust 2024 workspace for a Figma node tree to UI spec + LLM UI generation pipeline.
 Current crate layout:
 
 - `crates/cli`
@@ -15,8 +15,8 @@ Current crate layout:
 - `crates/figma_normalizer`
 - `crates/layout_infer`
 - `crates/ui_spec`
-- `crates/swiftui_ast`
-- `crates/swiftui_codegen`
+- `crates/llm_bundle`
+- `crates/llm_codegen`
 - `crates/asset_pipeline`
 - `crates/review_report`
 - `crates/orchestrator`

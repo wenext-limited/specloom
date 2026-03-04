@@ -4,7 +4,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(name = "cli")]
-#[command(about = "Figma node tree to SwiftUI pipeline CLI")]
+#[command(about = "Figma node tree to UI spec + LLM UI generation pipeline CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -21,9 +21,6 @@ enum Command {
     Normalize,
     InferLayout,
     BuildSpec,
-    BuildUiBlueprint,
-    #[command(hide = true)]
-    GenSwiftui,
     PrepareLlmBundle,
     ExportAssets,
     Report,
@@ -275,8 +272,6 @@ impl Command {
             Command::Normalize => "normalize",
             Command::InferLayout => "infer-layout",
             Command::BuildSpec => "build-spec",
-            Command::BuildUiBlueprint => "build-ui-blueprint",
-            Command::GenSwiftui => "gen-swiftui",
             Command::PrepareLlmBundle => "prepare-llm-bundle",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
