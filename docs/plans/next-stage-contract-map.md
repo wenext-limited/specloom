@@ -33,3 +33,29 @@ Expand warnings into typed categories:
 1. `ReviewWarningCategory` enum (`UnsupportedFeature`, `LowConfidenceLayout`, `FallbackApplied`, `DataLossRisk`).
 2. `ReviewWarning` with stable code, category, severity, message, and source node context.
 3. Report summary counters by category and severity for deterministic review output.
+
+## 5. Phase 05 Execution Evidence (2026-03-04)
+
+Implemented contract expansion work:
+
+1. `P5-T1` `238365a` (`figma_normalizer`): explicit normalized schema/API version constants and expanded deterministic contract tests.
+2. `P5-T2` `b119606` (`layout_infer`): strict decision/warning deserialization (`deny_unknown_fields`) and explicit contract/ordering tests.
+3. `P5-T3` `8ec0dcf` (`asset_pipeline`): `generation` metadata contract and `hashed_output_filename` field with deterministic contract tests.
+4. `P5-T4` `d307194` (`review_report`): deterministic summary pre-seeding for all category/severity variants and stable enum value tests.
+5. `P5-T5` `c0fd3ae` (workspace verification): explicit cross-crate contract checks in `scripts/verify_workspace.sh`.
+
+Verification evidence:
+
+1. `cargo test -p figma_normalizer`
+2. `cargo test -p layout_infer`
+3. `cargo test -p asset_pipeline`
+4. `cargo test -p review_report`
+5. `bash scripts/verify_workspace.sh`
+6. `cargo check --workspace`
+7. `cargo test --workspace`
+
+Follow-up scope for next phase:
+
+1. Add compatibility policy notes for contract version bumps and migration testing.
+2. Add fixture-based golden files for representative normalized/inferred/spec artifacts.
+3. Add cross-crate integration tests that assert end-to-end contract wiring (normalizer -> infer -> report).
