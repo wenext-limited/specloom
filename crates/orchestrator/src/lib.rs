@@ -150,6 +150,8 @@ pub struct NodeInfoResult {
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.ron";
+const PRE_LAYOUT_ARTIFACT_RELATIVE_PATH: &str = "output/specs/pre_layout.ron";
+const NODE_MAP_ARTIFACT_RELATIVE_PATH: &str = "output/specs/node_map.json";
 const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
 const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
 const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
@@ -172,6 +174,8 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         FETCH_ARTIFACT_RELATIVE_PATH => Some("fetch"),
         NORMALIZED_ARTIFACT_RELATIVE_PATH => Some("normalize"),
         SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
+        PRE_LAYOUT_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
+        NODE_MAP_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         SEARCH_INDEX_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
@@ -526,10 +530,39 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
         .to_pretty_ron()
         .map_err(|err| PipelineError::Serialization(err.to_string()))?;
 
+    let pre_layout_path = workspace_root.join(PRE_LAYOUT_ARTIFACT_RELATIVE_PATH);
+    write_bytes(pre_layout_path.as_path(), encoded.as_bytes())?;
+
+    let node_map_path = workspace_root.join(NODE_MAP_ARTIFACT_RELATIVE_PATH);
+    let node_map = build_node_map_artifact(&normalized).map_err(serialization_error)?;
+    let node_map_bytes = serde_json::to_vec_pretty(&node_map).map_err(serialization_error)?;
+    write_bytes(node_map_path.as_path(), node_map_bytes.as_slice())?;
+
     let output_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
     write_bytes(output_path.as_path(), encoded.as_bytes())?;
 
     Ok(normalize_result_path(workspace_root, output_path.as_path()))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NodeMapArtifact {
+    version: String,
+    nodes: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+fn build_node_map_artifact(
+    normalized: &figma_normalizer::NormalizationOutput,
+) -> Result<NodeMapArtifact, serde_json::Error> {
+    let mut nodes = std::collections::BTreeMap::new();
+    for node in &normalized.document.nodes {
+        nodes.insert(node.id.clone(), serde_json::to_value(node)?);
+    }
+
+    Ok(NodeMapArtifact {
+        version: "node_map/1.0".to_string(),
+        nodes,
+    })
 }
 
 fn run_build_agent_context_stage(workspace_root: &Path) -> Result<String, PipelineError> {
@@ -1011,6 +1044,20 @@ mod tests {
         assert!(artifact_path.is_file());
         let artifact = std::fs::read_to_string(artifact_path).expect("spec should be readable");
         assert!(artifact.contains("Container("));
+
+        let pre_layout_path = workspace_root.join("output/specs/pre_layout.ron");
+        assert!(pre_layout_path.is_file());
+        let pre_layout =
+            std::fs::read_to_string(pre_layout_path).expect("pre-layout should be readable");
+        assert!(pre_layout.contains("Container("));
+
+        let node_map_path = workspace_root.join("output/specs/node_map.json");
+        assert!(node_map_path.is_file());
+        let node_map = std::fs::read_to_string(node_map_path).expect("node map should be readable");
+        let node_map_value: serde_json::Value =
+            serde_json::from_str(node_map.as_str()).expect("node map should decode");
+        assert_eq!(node_map_value["version"], "node_map/1.0");
+        assert!(node_map_value["nodes"].is_object());
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
