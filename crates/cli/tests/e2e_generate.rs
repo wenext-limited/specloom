@@ -65,7 +65,7 @@ fn expected_generate_json_fixture() -> serde_json::Value {
 fn run_generate_json(workspace_root: &std::path::Path) -> serde_json::Value {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root)
-        .args(["generate", "--output", "json"])
+        .args(["generate", "--input", "fixture", "--output", "json"])
         .output()
         .unwrap();
     assert!(

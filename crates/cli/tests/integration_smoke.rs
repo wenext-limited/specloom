@@ -50,21 +50,23 @@ fn run_stage_unknown_stage_smoke() {
 }
 
 #[test]
-fn generate_success_smoke() {
-    let workspace_root = unique_cli_workspace_root("generate_success_smoke");
+fn generate_defaults_to_live_and_requires_inputs_smoke() {
+    let workspace_root = unique_cli_workspace_root("generate_defaults_to_live_and_requires_inputs");
 
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
         .arg("generate")
+        .env_remove("FIGMA_TOKEN")
         .output()
         .unwrap();
 
-    assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=build-agent-context output=output/agent artifact=output/agent/agent_context.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
-    );
-    assert!(out.stderr.is_empty());
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("live input missing required value(s):"));
+    assert!(stderr.contains("--file-key (or --figma-url)"));
+    assert!(stderr.contains("--node-id (or --figma-url)"));
+    assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }

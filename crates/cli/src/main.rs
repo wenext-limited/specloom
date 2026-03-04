@@ -5,6 +5,13 @@ use clap::Parser;
 #[derive(Debug, Parser)]
 #[command(name = "cli")]
 #[command(about = "Figma node tree to spec-first pipeline CLI")]
+#[command(
+    long_about = "Run deterministic pipeline stages for Figma snapshot processing, spec building, and agent lookup context."
+)]
+#[command(
+    after_long_help = "Examples:\n  cli generate --input fixture\n  cli generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  cli run-stage build-spec\n  cli agent-tool find-nodes --query \"login button\" --output json"
+)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -12,30 +19,50 @@ struct Cli {
 
 #[derive(Debug, clap::Subcommand)]
 enum Command {
+    /// Fetch raw snapshot data into `output/raw/fetch_snapshot.json`.
+    #[command(
+        long_about = "Fetch the source Figma snapshot. Use fixture mode for deterministic local runs, live mode for direct Figma API fetch, or snapshot mode to replay an existing raw artifact."
+    )]
     Fetch {
         #[command(flatten)]
         input: FetchInputOptions,
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    /// Normalize raw snapshot into `output/normalized/normalized_document.json`.
     Normalize,
+    /// Build specs under `output/specs` (`pre_layout`, `node_map`, `transform_plan`, `ui_spec`).
     BuildSpec,
+    /// Export image/vector asset manifest to `output/assets/asset_manifest.json`.
     ExportAssets,
+    /// Run the full deterministic pipeline in stage order.
+    #[command(
+        long_about = "Run all default stages in order:\n  fetch -> normalize -> build-spec -> build-agent-context -> export-assets"
+    )]
     Generate {
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
         #[command(flatten)]
-        input: FetchInputOptions,
+        input: GenerateInputOptions,
     },
+    /// List available stages and their output directories.
     Stages {
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    /// Run one stage by name (see `cli stages`).
     RunStage {
+        /// Stage name (fetch, normalize, build-spec, build-agent-context, export-assets).
+        #[arg(value_name = "STAGE")]
         stage: String,
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    /// Run stateless agent helper tools (`find-nodes`, `get-node-info`, `get-node-screenshot`).
     AgentTool {
         #[command(subcommand)]
         tool: AgentToolCommand,
@@ -44,29 +71,44 @@ enum Command {
 
 #[derive(Debug, clap::Subcommand)]
 enum AgentToolCommand {
+    /// Search indexed nodes with deterministic fuzzy ranking.
     FindNodes {
+        /// Free-text query from UI context (labels, structure hints, etc.).
         #[arg(long)]
         query: String,
+        /// Max number of ranked candidates to return.
         #[arg(long, default_value_t = 5)]
         top_k: usize,
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    /// Read indexed metadata for one node id.
     GetNodeInfo {
+        /// Node id to inspect (for example `79:18523`).
         #[arg(long)]
         node_id: String,
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    /// Fetch screenshot URL for one node via Figma images API.
+    #[command(
+        long_about = "Fetch a single-node screenshot from Figma and return its URL. Requires `--file-key`, `--node-id`, and FIGMA_TOKEN (or `--figma-token`)."
+    )]
     GetNodeScreenshot {
+        /// Figma file key.
         #[arg(long)]
         file_key: String,
+        /// Figma node id (`:` or `-` format accepted).
         #[arg(long)]
         node_id: String,
+        /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
         #[arg(long)]
         figma_token: Option<String>,
         #[arg(long, hide = true)]
         figma_api_base_url: Option<String>,
+        /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
@@ -80,16 +122,46 @@ enum OutputMode {
 
 #[derive(Debug, Clone, clap::Args)]
 struct FetchInputOptions {
+    /// Input mode: `fixture`, `live`, or `snapshot`.
     #[arg(long, value_enum, default_value_t = InputMode::Fixture)]
     input: InputMode,
+    /// Path to an existing raw snapshot JSON (required for `--input snapshot`).
     #[arg(long)]
     snapshot_path: Option<String>,
+    /// Figma quick link containing file key + node-id (used with `--input live`).
     #[arg(long)]
     figma_url: Option<String>,
+    /// Figma file key (used with `--input live`, optional when `--figma-url` is provided).
     #[arg(long)]
     file_key: Option<String>,
+    /// Figma node id (used with `--input live`, optional when `--figma-url` is provided).
     #[arg(long)]
     node_id: Option<String>,
+    /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
+    #[arg(long)]
+    figma_token: Option<String>,
+    #[arg(long, hide = true)]
+    figma_api_base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct GenerateInputOptions {
+    /// Input mode for `generate`: defaults to `live` (use `--input fixture` for local deterministic runs).
+    #[arg(long, value_enum, default_value_t = InputMode::Live)]
+    input: InputMode,
+    /// Path to an existing raw snapshot JSON (required for `--input snapshot`).
+    #[arg(long)]
+    snapshot_path: Option<String>,
+    /// Figma quick link containing file key + node-id (used with `--input live`).
+    #[arg(long)]
+    figma_url: Option<String>,
+    /// Figma file key (used with `--input live`, optional when `--figma-url` is provided).
+    #[arg(long)]
+    file_key: Option<String>,
+    /// Figma node id (used with `--input live`, optional when `--figma-url` is provided).
+    #[arg(long)]
+    node_id: Option<String>,
+    /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
     #[arg(long)]
     figma_token: Option<String>,
     #[arg(long, hide = true)]
@@ -172,7 +244,7 @@ fn main() {
                 Err(err) => emit_error_and_exit(err, output),
             },
             Command::Generate { output, input } => {
-                let config = fetch_config_or_exit(&input, output);
+                let config = fetch_config_for_generate_or_exit(&input, output);
                 match orchestrator::run_all_with_config(&config) {
                     Ok(results) => match output {
                         OutputMode::Text => {
@@ -404,6 +476,23 @@ fn fetch_config_or_exit(
     output: OutputMode,
 ) -> orchestrator::PipelineRunConfig {
     build_fetch_config(input).unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
+}
+
+fn fetch_config_for_generate_or_exit(
+    input: &GenerateInputOptions,
+    output: OutputMode,
+) -> orchestrator::PipelineRunConfig {
+    let fetch_input = FetchInputOptions {
+        input: input.input,
+        snapshot_path: input.snapshot_path.clone(),
+        figma_url: input.figma_url.clone(),
+        file_key: input.file_key.clone(),
+        node_id: input.node_id.clone(),
+        figma_token: input.figma_token.clone(),
+        figma_api_base_url: input.figma_api_base_url.clone(),
+    };
+    build_fetch_config(&fetch_input)
+        .unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
 }
 
 fn build_fetch_config(

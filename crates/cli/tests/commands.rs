@@ -8,6 +8,44 @@ fn help_lists_pipeline_subcommands() {
     assert!(text.contains("fetch"));
     assert!(text.contains("normalize"));
     assert!(text.contains("generate"));
+    assert!(text.contains("Examples:"));
+    assert!(text.contains("agent-tool find-nodes"));
+}
+
+#[test]
+fn generate_subcommand_help_includes_stage_order() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["generate", "--help"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("fetch -> normalize -> build-spec"));
+    assert!(text.contains("build-agent-context -> export-assets"));
+}
+
+#[test]
+fn fetch_subcommand_help_describes_input_flags() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["fetch", "--help"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("Input mode: `fixture`, `live`, or `snapshot`"));
+    assert!(text.contains("--snapshot-path"));
+    assert!(text.contains("FIGMA_TOKEN"));
+}
+
+#[test]
+fn agent_tool_get_node_screenshot_help_describes_requirements() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["agent-tool", "get-node-screenshot", "--help"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("Fetch a single-node screenshot from Figma"));
+    assert!(text.contains("--file-key"));
+    assert!(text.contains("--node-id"));
+    assert!(text.contains("--figma-token"));
 }
 
 #[test]
@@ -304,7 +342,7 @@ fn generate_subcommand_runs_full_pipeline() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
-        .arg("generate")
+        .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&output.stdout);
@@ -332,6 +370,22 @@ fn generate_subcommand_rejects_live_input_without_required_values() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr.contains("live input missing required value(s)"));
     assert!(stderr.contains("--node-id"));
+    assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
+}
+
+#[test]
+fn generate_subcommand_defaults_to_live_and_rejects_missing_values() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .arg("generate")
+        .env_remove("FIGMA_TOKEN")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("live input missing required value(s)"));
+    assert!(stderr.contains("--file-key (or --figma-url)"));
+    assert!(stderr.contains("--node-id (or --figma-url)"));
     assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
 }
 
@@ -407,7 +461,7 @@ fn generate_subcommand_supports_json_output_mode() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
-        .args(["generate", "--output", "json"])
+        .args(["generate", "--input", "fixture", "--output", "json"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&output.stdout);
@@ -429,7 +483,7 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
-        .arg("generate")
+        .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -448,7 +502,7 @@ fn agent_tool_find_nodes_json_mode_returns_candidates() {
 
     let generate = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
-        .arg("generate")
+        .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     assert!(generate.status.success());
@@ -480,7 +534,7 @@ fn agent_tool_get_node_info_reports_not_found_actionably() {
 
     let generate = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .current_dir(workspace_root.as_path())
-        .arg("generate")
+        .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     assert!(generate.status.success());

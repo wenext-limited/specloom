@@ -48,11 +48,14 @@ cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/des
 
 Input modes:
 
-1. `fixture` (default): uses a built-in deterministic payload for local/testing runs.
+1. `fixture`: uses a built-in deterministic payload for local/testing runs.
 2. `live`: calls the Figma API with either `--file-key` + `--node-id`, or a single `--figma-url`.
 3. `snapshot`: loads an existing raw snapshot via `--snapshot-path` and reuses it as fetch output.
-4. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
-5. Downstream stages read prior artifacts from `output/`.
+4. Defaults:
+5. `fetch` defaults to `--input fixture`.
+6. `generate` defaults to `--input live`.
+7. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
+8. Downstream stages read prior artifacts from `output/`.
 
 Generated artifacts:
 
@@ -99,8 +102,8 @@ cargo run -p cli -- fetch --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSH
 Run full pipeline:
 
 ```bash
-cargo run -p cli -- generate
-cargo run -p cli -- generate --output json
+cargo run -p cli -- generate --input fixture
+cargo run -p cli -- generate --input fixture --output json
 cargo run -p cli -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
 cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
 cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
@@ -126,11 +129,11 @@ cargo run -p cli -- agent-tool get-node-screenshot --file-key <FILE_KEY> --node-
 | Run fetch stage with existing snapshot artifact | `cargo run -p cli -- fetch --input snapshot --snapshot-path <path>` | text (default) |
 | Run one stage with human-readable output | `cargo run -p cli -- run-stage <stage>` | text (default) |
 | Run one stage with machine-readable output | `cargo run -p cli -- run-stage <stage> --output json` | json |
-| Run end-to-end pipeline with per-stage artifact lines | `cargo run -p cli -- generate` | text (default) |
+| Run end-to-end pipeline with fixture input and per-stage artifact lines | `cargo run -p cli -- generate --input fixture` | text (default) |
 | Run end-to-end pipeline with live Figma input | `cargo run -p cli -- generate --input live --file-key <file> --node-id <node>` | text (default) |
 | Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
 | Run end-to-end pipeline from existing snapshot artifact | `cargo run -p cli -- generate --input snapshot --snapshot-path <path>` | text (default) |
-| Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
+| Run end-to-end pipeline with fixture input and structured stage results | `cargo run -p cli -- generate --input fixture --output json` | json |
 | Find candidate nodes via deterministic fuzzy lookup | `cargo run -p cli -- agent-tool find-nodes --query "<text>" --output json` | text/json |
 | Read indexed node details | `cargo run -p cli -- agent-tool get-node-info --node-id <id>` | text/json |
 | Fetch node screenshot directly from Figma images API | `cargo run -p cli -- agent-tool get-node-screenshot --file-key <file> --node-id <node>` | text/json |
@@ -140,7 +143,8 @@ Notes:
 1. Valid stages are: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
 3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
-4. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+4. `generate` defaults to `--input live`; pass `--input fixture` for deterministic local runs.
+5. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## Scope
 
