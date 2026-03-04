@@ -4,6 +4,7 @@ use serde_json::Value;
 
 pub const RAW_SNAPSHOT_SCHEMA_VERSION: &str = "1.0";
 pub const FIGMA_API_VERSION: &str = "v1";
+pub const DEFAULT_FIGMA_API_BASE_URL: &str = "https://api.figma.com";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchClientError {
@@ -11,6 +12,14 @@ pub enum FetchClientError {
     InvalidRequest(String),
     #[error("invalid fixture json: {0}")]
     InvalidFixtureJson(#[from] serde_json::Error),
+    #[error("figma api unauthorized")]
+    Unauthorized,
+    #[error("figma api returned non-success status {status}: {message}")]
+    HttpStatus { status: u16, message: String },
+    #[error("invalid figma api response: {0}")]
+    InvalidApiResponse(String),
+    #[error("http transport error: {0}")]
+    HttpTransport(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -37,6 +46,47 @@ impl FetchNodesRequest {
         }
 
         Ok(Self { file_key, node_id })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveFetchRequest {
+    pub fetch: FetchNodesRequest,
+    pub figma_token: String,
+    pub api_base_url: Option<String>,
+}
+
+impl LiveFetchRequest {
+    pub fn new(
+        file_key: String,
+        node_id: String,
+        figma_token: String,
+        api_base_url: Option<String>,
+    ) -> Result<Self, FetchClientError> {
+        let fetch = FetchNodesRequest::new(file_key, node_id)?;
+
+        let figma_token = figma_token.trim().to_string();
+        if figma_token.is_empty() {
+            return Err(FetchClientError::InvalidRequest(
+                "figma_token is required for live fetch".to_string(),
+            ));
+        }
+
+        let api_base_url = api_base_url
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        Ok(Self {
+            fetch,
+            figma_token,
+            api_base_url,
+        })
+    }
+
+    pub fn api_base_url(&self) -> &str {
+        self.api_base_url
+            .as_deref()
+            .unwrap_or(DEFAULT_FIGMA_API_BASE_URL)
     }
 }
 
@@ -144,5 +194,68 @@ mod tests {
             serde_json::from_str(&encoded).expect("snapshot should deserialize");
 
         assert_eq!(decoded, snapshot);
+    }
+
+    #[test]
+    fn live_fetch_request_rejects_missing_figma_token() {
+        let err = super::LiveFetchRequest::new(
+            "abc123".to_string(),
+            "123:456".to_string(),
+            "".to_string(),
+            None,
+        )
+        .expect_err("empty figma token should be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "invalid fetch request: figma_token is required for live fetch"
+        );
+    }
+
+    #[test]
+    fn live_fetch_request_allows_explicit_api_base_url_override() {
+        let request = super::LiveFetchRequest::new(
+            "abc123".to_string(),
+            "123:456".to_string(),
+            "secret-token".to_string(),
+            Some("http://127.0.0.1:9999".to_string()),
+        )
+        .expect("live fetch request should be valid");
+
+        assert_eq!(request.fetch.file_key, "abc123");
+        assert_eq!(request.fetch.node_id, "123:456");
+        assert_eq!(request.figma_token, "secret-token");
+        assert_eq!(
+            request.api_base_url,
+            Some("http://127.0.0.1:9999".to_string())
+        );
+    }
+
+    #[test]
+    fn live_fetch_request_uses_default_figma_api_base_url() {
+        let request = super::LiveFetchRequest::new(
+            "abc123".to_string(),
+            "123:456".to_string(),
+            "secret-token".to_string(),
+            None,
+        )
+        .expect("live fetch request should be valid");
+
+        assert_eq!(request.api_base_url(), super::DEFAULT_FIGMA_API_BASE_URL);
+    }
+
+    #[test]
+    fn fetch_client_error_contract_includes_live_transport_variants() {
+        let unauthorized = super::FetchClientError::Unauthorized;
+        assert_eq!(unauthorized.to_string(), "figma api unauthorized");
+
+        let http_status = super::FetchClientError::HttpStatus {
+            status: 404,
+            message: "Not Found".to_string(),
+        };
+        assert_eq!(
+            http_status.to_string(),
+            "figma api returned non-success status 404: Not Found"
+        );
     }
 }
