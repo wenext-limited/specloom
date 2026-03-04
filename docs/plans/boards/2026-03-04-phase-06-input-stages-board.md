@@ -19,7 +19,7 @@
 | [x] | P6-T2 | Add fetch stage artifact writing | codex | P6-T1 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `bb65e01` | Started 2026-03-04 15:08 CST; writes deterministic `output/raw/fetch_snapshot.json` and returns artifact metadata |
 | [x] | P6-T3 | Implement raw-to-normalized translation | codex | P6-T1 | `crates/figma_normalizer/src/lib.rs`, `crates/figma_normalizer/Cargo.toml` | `cargo test -p figma_normalizer` | `9fe843f` | Started 2026-03-04 15:12 CST; raw snapshot normalization plus explicit unsupported-field warnings implemented |
 | [x] | P6-T4 | Wire normalize stage in orchestrator + CLI smoke | codex | P6-T2,P6-T3 | `crates/orchestrator/src/lib.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p orchestrator && cargo test -p cli --test integration_smoke` | `df36673` | Started 2026-03-04 15:16 CST; normalize now consumes raw snapshot artifact and writes deterministic normalized artifact |
-| [ ] | P6-T5 | Phase verification and closeout | unassigned | P6-T4 | `docs/plans/boards/2026-03-04-phase-06-input-stages-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge phase to `main` after pass |
+| [x] | P6-T5 | Phase verification and closeout | codex | P6-T4 | `docs/plans/boards/2026-03-04-phase-06-input-stages-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | `<pending>` | Started 2026-03-04 15:22 CST; all phase verification commands passed and phase is ready to merge |
 
 ## Parallelization Rules
 
