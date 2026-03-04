@@ -91,6 +91,7 @@ impl Default for PipelineRunConfig {
 pub enum FetchMode {
     Fixture,
     Live(LiveFetchConfig),
+    Snapshot(SnapshotFetchConfig),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +100,11 @@ pub struct LiveFetchConfig {
     pub node_id: String,
     pub figma_token: String,
     pub api_base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotFetchConfig {
+    pub snapshot_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,9 +339,8 @@ fn run_fetch_stage(workspace_root: &Path, fetch_mode: &FetchMode) -> Result<Stri
             figma_client::fetch_snapshot_from_fixture(&request, FETCH_FIXTURE_JSON)
                 .map_err(fetch_error)?
         }
-        FetchMode::Live(config) => {
-            run_live_fetch_with_cache(workspace_root, config)?
-        }
+        FetchMode::Live(config) => run_live_fetch_with_cache(workspace_root, config)?,
+        FetchMode::Snapshot(config) => load_snapshot_from_file(workspace_root, config)?,
     };
 
     let artifact_path = workspace_root.join(FETCH_ARTIFACT_RELATIVE_PATH);
@@ -347,6 +352,29 @@ fn run_fetch_stage(workspace_root: &Path, fetch_mode: &FetchMode) -> Result<Stri
     std::fs::write(&artifact_path, format!("{encoded}\n")).map_err(io_error)?;
 
     Ok(FETCH_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
+fn load_snapshot_from_file(
+    workspace_root: &Path,
+    config: &SnapshotFetchConfig,
+) -> Result<figma_client::RawFigmaSnapshot, PipelineError> {
+    let snapshot_path = resolve_workspace_path(workspace_root, config.snapshot_path.as_str());
+    let raw = std::fs::read_to_string(snapshot_path.as_path()).map_err(io_error)?;
+    serde_json::from_str::<figma_client::RawFigmaSnapshot>(raw.as_str()).map_err(|err| {
+        PipelineError::Serialization(format!(
+            "invalid fetch snapshot json at {}: {err}",
+            snapshot_path.display()
+        ))
+    })
+}
+
+fn resolve_workspace_path(workspace_root: &Path, candidate_path: &str) -> std::path::PathBuf {
+    let path = Path::new(candidate_path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        workspace_root.join(path)
+    }
 }
 
 fn run_live_fetch_with_cache(
@@ -366,10 +394,9 @@ fn run_live_fetch_with_cache(
     }
 
     let cache_path = live_fetch_cache_path(workspace_root, config);
-    if let Some(snapshot) = try_read_live_fetch_cache(
-        cache_path.as_path(),
-        live_fetch_cache_max_age_secs(),
-    ) {
+    if let Some(snapshot) =
+        try_read_live_fetch_cache(cache_path.as_path(), live_fetch_cache_max_age_secs())
+    {
         return Ok(snapshot);
     }
 
@@ -958,6 +985,7 @@ mod tests {
         let live_config = match &config.fetch_mode {
             FetchMode::Live(live_config) => live_config,
             FetchMode::Fixture => panic!("expected live fetch config"),
+            FetchMode::Snapshot(_) => panic!("expected live fetch config"),
         };
         let cache_path = live_fetch_cache_path(workspace_root.as_path(), live_config);
         assert!(cache_path.is_file(), "live fetch cache should be written");
@@ -978,6 +1006,78 @@ mod tests {
                 "document": {
                     "id": "123:456",
                     "name": "Cached Root",
+                    "type": "FRAME",
+                    "children": []
+                }
+            })
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_fetch_with_snapshot_config_writes_snapshot_artifact() {
+        let workspace_root = unique_test_workspace_root(
+            "run_stage_fetch_with_snapshot_config_writes_snapshot_artifact",
+        );
+        let input_snapshot_path = workspace_root.join("fixtures/snapshot.json");
+        let input_snapshot_parent = input_snapshot_path
+            .parent()
+            .expect("snapshot input should have parent directory");
+        std::fs::create_dir_all(input_snapshot_parent)
+            .expect("snapshot input directory should be created");
+        std::fs::write(
+            input_snapshot_path.as_path(),
+            r#"{
+                "snapshot_version": "1.0",
+                "source": {
+                    "file_key": "input-file",
+                    "node_id": "9:9",
+                    "figma_api_version": "v1"
+                },
+                "payload": {
+                    "document": {
+                        "id": "9:9",
+                        "name": "Snapshot Root",
+                        "type": "FRAME",
+                        "children": []
+                    }
+                }
+            }"#,
+        )
+        .expect("snapshot input should be written");
+
+        let config = PipelineRunConfig {
+            fetch_mode: FetchMode::Snapshot(SnapshotFetchConfig {
+                snapshot_path: "fixtures/snapshot.json".to_string(),
+            }),
+        };
+        let result = run_stage_in_workspace_with_config("fetch", workspace_root.as_path(), &config)
+            .expect("snapshot fetch should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "fetch",
+                output_dir: "output/raw",
+                artifact_path: Some("output/raw/fetch_snapshot.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/raw/fetch_snapshot.json");
+        assert!(artifact_path.is_file(), "fetch artifact should exist");
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let snapshot: figma_client::RawFigmaSnapshot =
+            serde_json::from_str(&artifact).expect("artifact should be valid raw snapshot json");
+        assert_eq!(snapshot.source.file_key, "input-file");
+        assert_eq!(snapshot.source.node_id, "9:9");
+        assert_eq!(
+            snapshot.payload,
+            serde_json::json!({
+                "document": {
+                    "id": "9:9",
+                    "name": "Snapshot Root",
                     "type": "FRAME",
                     "children": []
                 }

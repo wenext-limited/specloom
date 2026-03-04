@@ -51,8 +51,9 @@ Input modes:
 
 1. `fixture` (default): uses a built-in deterministic payload for local/testing runs.
 2. `live`: calls the Figma API with either `--file-key` + `--node-id`, or a single `--figma-url`.
-3. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
-4. Downstream stages read prior artifacts from `output/`.
+3. `snapshot`: loads an existing raw snapshot via `--snapshot-path` and reuses it as fetch output.
+4. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
+5. Downstream stages read prior artifacts from `output/`.
 
 Generated artifacts:
 
@@ -90,6 +91,7 @@ Run fetch stage directly (fixture or live):
 cargo run -p cli -- fetch
 cargo run -p cli -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
 cargo run -p cli -- fetch --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p cli -- fetch --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
 Run full pipeline:
@@ -99,6 +101,7 @@ cargo run -p cli -- generate
 cargo run -p cli -- generate --output json
 cargo run -p cli -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
 cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
 Prepare and run LLM UI generation:
@@ -118,11 +121,13 @@ cargo run -p cli -- generate-ui --target swiftui --model gpt-5
 | Run fetch stage with fixture input | `cargo run -p cli -- fetch --input fixture` | text (default) |
 | Run fetch stage with live Figma input | `cargo run -p cli -- fetch --input live --file-key <file> --node-id <node>` | text (default) |
 | Run fetch stage with Figma quick link input | `cargo run -p cli -- fetch --input live --figma-url "<figma-url>"` | text (default) |
+| Run fetch stage with existing snapshot artifact | `cargo run -p cli -- fetch --input snapshot --snapshot-path <path>` | text (default) |
 | Run one stage with human-readable output | `cargo run -p cli -- run-stage <stage>` | text (default) |
 | Run one stage with machine-readable output | `cargo run -p cli -- run-stage <stage> --output json` | json |
 | Run end-to-end pipeline with per-stage artifact lines | `cargo run -p cli -- generate` | text (default) |
 | Run end-to-end pipeline with live Figma input | `cargo run -p cli -- generate --input live --file-key <file> --node-id <node>` | text (default) |
 | Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
+| Run end-to-end pipeline from existing snapshot artifact | `cargo run -p cli -- generate --input snapshot --snapshot-path <path>` | text (default) |
 | Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
 | Build deterministic LLM bundle artifact | `cargo run -p cli -- run-stage prepare-llm-bundle` | text (default) |
 | Generate UI files via direct model call | `cargo run -p cli -- generate-ui --target <target> --model <model>` | text (default) |
@@ -139,7 +144,7 @@ Notes:
 In-scope right now:
 
 1. deterministic stage orchestration and artifact handoff
-2. fixture and live Figma fetch input modes for `fetch` and `generate`
+2. fixture, live, and snapshot fetch input modes for `fetch` and `generate`
 3. warning/report surfacing for unsupported and low-confidence behavior
 4. fixture-backed end-to-end generate coverage
 

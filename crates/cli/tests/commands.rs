@@ -38,6 +38,73 @@ fn fetch_subcommand_rejects_live_input_without_required_values() {
 }
 
 #[test]
+fn fetch_subcommand_rejects_snapshot_input_without_required_values() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["fetch", "--input", "snapshot"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("snapshot input missing required value(s)"));
+    assert!(stderr.contains("--snapshot-path"));
+}
+
+#[test]
+fn fetch_subcommand_accepts_snapshot_input_with_snapshot_path() {
+    let workspace_root =
+        unique_cli_workspace_root("fetch_subcommand_accepts_snapshot_input_with_snapshot_path");
+    let snapshot_path = workspace_root.join("fixtures/source_snapshot.json");
+    std::fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        snapshot_path.as_path(),
+        r#"{
+            "snapshot_version": "1.0",
+            "source": {
+                "file_key": "snapshot-file-key",
+                "node_id": "7:7",
+                "figma_api_version": "v1"
+            },
+            "payload": {
+                "document": {
+                    "id": "7:7",
+                    "name": "Snapshot Root",
+                    "type": "FRAME",
+                    "children": []
+                }
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args([
+            "fetch",
+            "--input",
+            "snapshot",
+            "--snapshot-path",
+            "fixtures/source_snapshot.json",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(text.contains("stage=fetch"));
+    assert!(text.contains("output=output/raw"));
+    let artifact_path = workspace_root.join("output/raw/fetch_snapshot.json");
+    assert!(artifact_path.is_file());
+
+    let artifact = std::fs::read_to_string(&artifact_path).unwrap();
+    let decoded: serde_json::Value = serde_json::from_str(&artifact).unwrap();
+    assert_eq!(decoded["source"]["file_key"], "snapshot-file-key");
+    assert_eq!(decoded["source"]["node_id"], "7:7");
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
     let workspace_root =
         unique_cli_workspace_root("fetch_subcommand_uses_figma_token_from_env_for_live_input");
@@ -269,6 +336,57 @@ fn generate_subcommand_rejects_live_input_without_required_values() {
     assert!(stderr.contains("live input missing required value(s)"));
     assert!(stderr.contains("--node-id"));
     assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
+}
+
+#[test]
+fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_subcommand_accepts_snapshot_input_with_snapshot_path");
+    let snapshot_path = workspace_root.join("fixtures/source_snapshot.json");
+    std::fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        snapshot_path.as_path(),
+        r#"{
+            "snapshot_version": "1.0",
+            "source": {
+                "file_key": "snapshot-file-key",
+                "node_id": "7:7",
+                "figma_api_version": "v1"
+            },
+            "payload": {
+                "document": {
+                    "id": "7:7",
+                    "name": "Snapshot Root",
+                    "type": "FRAME",
+                    "children": []
+                }
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args([
+            "generate",
+            "--input",
+            "snapshot",
+            "--snapshot-path",
+            "fixtures/source_snapshot.json",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(text.contains("stage=fetch output=output/raw"));
+    assert!(text.contains("stage=normalize output=output/normalized"));
+    assert!(text.contains("stage=infer-layout output=output/inferred"));
+    assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=export-assets output=output/assets"));
+    assert!(text.contains("stage=report output=output/reports"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
 }
 
 #[test]

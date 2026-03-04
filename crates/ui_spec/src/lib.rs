@@ -98,6 +98,8 @@ pub enum UiNodeKind {
 #[serde(deny_unknown_fields)]
 pub struct UiLayout {
     pub strategy: UiLayoutStrategy,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub item_spacing: f32,
 }
 

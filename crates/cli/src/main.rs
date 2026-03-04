@@ -68,6 +68,8 @@ struct FetchInputOptions {
     #[arg(long, value_enum, default_value_t = InputMode::Fixture)]
     input: InputMode,
     #[arg(long)]
+    snapshot_path: Option<String>,
+    #[arg(long)]
     figma_url: Option<String>,
     #[arg(long)]
     file_key: Option<String>,
@@ -84,6 +86,7 @@ enum InputMode {
     #[default]
     Fixture,
     Live,
+    Snapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,6 +369,20 @@ fn build_fetch_config(
                     node_id: node_id.expect("checked above"),
                     figma_token: figma_token.expect("checked above"),
                     api_base_url,
+                }),
+            })
+        }
+        InputMode::Snapshot => {
+            let snapshot_path = normalize_optional_field(input.snapshot_path.as_deref());
+            if snapshot_path.is_none() {
+                return Err(
+                    "snapshot input missing required value(s): --snapshot-path. Provide the missing value(s) and retry."
+                        .to_string(),
+                );
+            }
+            Ok(orchestrator::PipelineRunConfig {
+                fetch_mode: orchestrator::FetchMode::Snapshot(orchestrator::SnapshotFetchConfig {
+                    snapshot_path: snapshot_path.expect("checked above"),
                 }),
             })
         }
