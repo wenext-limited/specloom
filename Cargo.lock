@@ -176,6 +176,7 @@ name = "orchestrator"
 version = "0.1.0"
 dependencies = [
  "figma_client",
+ "figma_normalizer",
  "serde_json",
  "thiserror",
 ]

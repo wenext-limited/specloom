@@ -14,6 +14,10 @@ pub enum PipelineError {
     Serialization(String),
     #[error("fetch client error: {0}")]
     FetchClient(String),
+    #[error("missing input artifact: {0}")]
+    MissingInputArtifact(String),
+    #[error("normalizer error: {0}")]
+    Normalizer(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,7 @@ pub struct StageExecutionResult {
 }
 
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
+const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -100,6 +105,7 @@ pub fn run_stage_in_workspace(
 
     let artifact_path = match stage.name {
         "fetch" => Some(run_fetch_stage(workspace_root)?),
+        "normalize" => Some(run_normalize_stage(workspace_root)?),
         _ => None,
     };
 
@@ -131,6 +137,30 @@ fn run_fetch_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     Ok(FETCH_ARTIFACT_RELATIVE_PATH.to_string())
 }
 
+fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let raw_artifact_path = workspace_root.join(FETCH_ARTIFACT_RELATIVE_PATH);
+    if !raw_artifact_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            FETCH_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let raw_artifact = std::fs::read_to_string(&raw_artifact_path).map_err(io_error)?;
+    let raw_snapshot: figma_client::RawFigmaSnapshot =
+        serde_json::from_str(&raw_artifact).map_err(serialization_error)?;
+    let normalized =
+        figma_normalizer::normalize_snapshot(&raw_snapshot).map_err(normalizer_error)?;
+
+    let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
+    if let Some(parent) = normalized_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let encoded = serde_json::to_string_pretty(&normalized).map_err(serialization_error)?;
+    std::fs::write(&normalized_path, format!("{encoded}\n")).map_err(io_error)?;
+
+    Ok(NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
 fn io_error(err: std::io::Error) -> PipelineError {
     PipelineError::Io(err.to_string())
 }
@@ -141,6 +171,10 @@ fn serialization_error(err: serde_json::Error) -> PipelineError {
 
 fn fetch_error(err: figma_client::FetchClientError) -> PipelineError {
     PipelineError::FetchClient(err.to_string())
+}
+
+fn normalizer_error(err: figma_normalizer::NormalizationError) -> PipelineError {
+    PipelineError::Normalizer(err.to_string())
 }
 
 #[cfg(test)]
@@ -189,12 +223,12 @@ mod tests {
 
     #[test]
     fn run_stage_returns_execution_result_for_known_stage() {
-        let result = run_stage("normalize").expect("known stage should run");
+        let result = run_stage("infer-layout").expect("known stage should run");
         assert_eq!(
             result,
             StageExecutionResult {
-                stage_name: "normalize",
-                output_dir: "output/normalized",
+                stage_name: "infer-layout",
+                output_dir: "output/inferred",
                 artifact_path: None,
             }
         );
@@ -228,6 +262,57 @@ mod tests {
         );
         assert_eq!(snapshot.source.file_key, "fixture-file-key");
         assert_eq!(snapshot.source.node_id, "0:1");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_normalize_reads_raw_and_writes_normalized_artifact() {
+        let workspace_root = unique_test_workspace_root(
+            "run_stage_normalize_reads_raw_and_writes_normalized_artifact",
+        );
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        let result = run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "normalize",
+                output_dir: "output/normalized",
+                artifact_path: Some("output/normalized/normalized_document.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/normalized/normalized_document.json");
+        assert!(artifact_path.is_file(), "normalized artifact should exist");
+
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let normalized: figma_normalizer::NormalizationOutput =
+            serde_json::from_str(&artifact).expect("artifact should be valid normalized json");
+        assert_eq!(
+            normalized.document.schema_version,
+            figma_normalizer::NORMALIZED_SCHEMA_VERSION
+        );
+        assert_eq!(normalized.document.source.file_key, "fixture-file-key");
+        assert_eq!(normalized.document.source.root_node_id, "0:1");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_normalize_requires_raw_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_normalize_requires_raw_artifact");
+
+        let err = run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect_err("normalize should fail without fetch artifact");
+        assert_eq!(
+            err,
+            PipelineError::MissingInputArtifact("output/raw/fetch_snapshot.json".to_string())
+        );
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
