@@ -1,5 +1,7 @@
 # Proposal: Figma Node Tree -> SwiftUI Generator (Rust 2024)
 
+For current repository usage commands and artifact paths, see the root [`README.md`](/Users/wendell/Developer/forge/README.md).
+
 ## 1. Objective
 
 Build an agent-friendly pipeline that converts **Figma node trees** into **reviewable SwiftUI code**, using **Rust 2024** for all core tooling.
