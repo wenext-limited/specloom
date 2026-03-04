@@ -19,12 +19,15 @@ pub enum NormalizationError {
 pub struct NormalizationWarning {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizationOutput {
     pub document: NormalizedDocument,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<NormalizationWarning>,
 }
 
@@ -207,8 +210,41 @@ fn collect_passthrough_fields(node: &serde_json::Map<String, Value>) -> BTreeMap
 
     node.iter()
         .filter(|(field, _)| !SUPPORTED_FIELDS.contains(&field.as_str()))
-        .map(|(field, value)| (field.clone(), value.clone()))
+        .filter_map(|(field, value)| {
+            prune_passthrough_value(value).map(|pruned| (field.clone(), pruned))
+        })
         .collect()
+}
+
+fn prune_passthrough_value(value: &Value) -> Option<Value> {
+    match value {
+        Value::Null => None,
+        Value::Array(values) => {
+            let pruned = values
+                .iter()
+                .filter_map(prune_passthrough_value)
+                .collect::<Vec<_>>();
+            if pruned.is_empty() {
+                None
+            } else {
+                Some(Value::Array(pruned))
+            }
+        }
+        Value::Object(map) => {
+            let pruned = map
+                .iter()
+                .filter_map(|(key, value)| {
+                    prune_passthrough_value(value).map(|pruned| (key.clone(), pruned))
+                })
+                .collect::<serde_json::Map<_, _>>();
+            if pruned.is_empty() {
+                None
+            } else {
+                Some(Value::Object(pruned))
+            }
+        }
+        _ => Some(value.clone()),
+    }
 }
 
 fn default_style() -> NodeStyle {
@@ -377,6 +413,7 @@ pub struct Paint {
     pub kind: PaintKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_ref: Option<String>,
 }
 
@@ -594,6 +631,53 @@ mod tests {
         assert_eq!(
             output.document.nodes[0].passthrough_fields.get("blendMode"),
             Some(&Value::String("MULTIPLY".to_string()))
+        );
+    }
+
+    #[test]
+    fn normalize_snapshot_prunes_null_and_empty_passthrough_values() {
+        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+            .expect("request should be valid");
+        let snapshot = figma_client::fetch_snapshot_from_fixture(
+            &request,
+            r#"{
+                "document": {
+                    "id": "1:1",
+                    "name": "Root",
+                    "type": "FRAME",
+                    "visible": true,
+                    "absoluteRenderBounds": null,
+                    "effects": [],
+                    "interactions": [],
+                    "styles": {
+                        "fill": null,
+                        "stroke": [],
+                        "text": "body"
+                    },
+                    "boundVariables": {
+                        "width": null,
+                        "height": "token/height"
+                    },
+                    "absoluteBoundingBox": { "x": 0.0, "y": 0.0, "width": 390.0, "height": 844.0 },
+                    "children": []
+                }
+            }"#,
+        )
+        .expect("fixture should parse");
+
+        let output = super::normalize_snapshot(&snapshot).expect("snapshot should normalize");
+        let passthrough = &output.document.nodes[0].passthrough_fields;
+
+        assert!(!passthrough.contains_key("absoluteRenderBounds"));
+        assert!(!passthrough.contains_key("effects"));
+        assert!(!passthrough.contains_key("interactions"));
+        assert_eq!(
+            passthrough.get("styles"),
+            Some(&serde_json::json!({ "text": "body" }))
+        );
+        assert_eq!(
+            passthrough.get("boundVariables"),
+            Some(&serde_json::json!({ "height": "token/height" }))
         );
     }
 
