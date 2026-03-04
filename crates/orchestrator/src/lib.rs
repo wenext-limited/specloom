@@ -104,6 +104,8 @@ const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.ron";
+const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
+const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
@@ -123,12 +125,14 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         NORMALIZED_ARTIFACT_RELATIVE_PATH => Some("normalize"),
         INFERRED_ARTIFACT_RELATIVE_PATH => Some("infer-layout"),
         SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
+        AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
+        SEARCH_INDEX_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
         _ => None,
     }
 }
 
-const PIPELINE_STAGES: [PipelineStageDefinition; 5] = [
+const PIPELINE_STAGES: [PipelineStageDefinition; 6] = [
     PipelineStageDefinition {
         name: "fetch",
         output_dir: "output/raw",
@@ -146,16 +150,21 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 5] = [
         output_dir: "output/specs",
     },
     PipelineStageDefinition {
+        name: "build-agent-context",
+        output_dir: "output/agent",
+    },
+    PipelineStageDefinition {
         name: "export-assets",
         output_dir: "output/assets",
     },
 ];
 
-const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 5] = [
+const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 6] = [
     "fetch",
     "normalize",
     "infer-layout",
     "build-spec",
+    "build-agent-context",
     "export-assets",
 ];
 
@@ -226,6 +235,7 @@ pub fn run_stage_in_workspace_with_config(
         "normalize" => Some(run_normalize_stage(workspace_root)?),
         "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
+        "build-agent-context" => Some(run_build_agent_context_stage(workspace_root)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
         _ => None,
     };
@@ -363,6 +373,165 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
     Ok(normalize_result_path(workspace_root, output_path.as_path()))
 }
 
+fn run_build_agent_context_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let spec = read_required_ron::<ui_spec::UiSpec>(workspace_root, SPEC_ARTIFACT_RELATIVE_PATH)?;
+
+    let root_node_id = spec.id().to_string();
+    let context = agent_context::AgentContext {
+        version: "agent_context/1.0".to_string(),
+        screen: agent_context::ScreenRef {
+            root_node_id: root_node_id.clone(),
+            root_screenshot_ref: format!(
+                "output/images/root_{}.png",
+                root_node_id.replace(':', "_")
+            ),
+        },
+        rules: agent_context::GenerationRules {
+            on_node_mismatch: "warn_and_continue".to_string(),
+        },
+        tools: vec![
+            "find_nodes".to_string(),
+            "get_node_info".to_string(),
+            "get_node_screenshot".to_string(),
+            "get_asset".to_string(),
+        ],
+        skeleton: build_skeleton_nodes(&spec),
+    };
+
+    let search_index = agent_context::SearchIndex {
+        version: "search_index/1.0".to_string(),
+        entries: build_search_index_entries(&spec),
+    };
+
+    let context_path = workspace_root.join(AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH);
+    let context_bytes = context.to_pretty_json().map_err(serialization_error)?;
+    write_bytes(context_path.as_path(), context_bytes.as_slice())?;
+
+    let index_path = workspace_root.join(SEARCH_INDEX_ARTIFACT_RELATIVE_PATH);
+    let index_bytes = serde_json::to_vec_pretty(&search_index).map_err(serialization_error)?;
+    write_bytes(index_path.as_path(), index_bytes.as_slice())?;
+
+    Ok(normalize_result_path(workspace_root, context_path.as_path()))
+}
+
+fn build_skeleton_nodes(root: &ui_spec::UiSpec) -> Vec<agent_context::SkeletonNode> {
+    let mut nodes = Vec::new();
+    flatten_skeleton(root, "", &mut nodes);
+    nodes
+}
+
+fn flatten_skeleton(node: &ui_spec::UiSpec, parent_path: &str, out: &mut Vec<agent_context::SkeletonNode>) {
+    let name = node_name(node).to_string();
+    let path = if parent_path.is_empty() {
+        name.clone()
+    } else {
+        format!("{parent_path}/{name}")
+    };
+
+    out.push(agent_context::SkeletonNode {
+        node_id: node.id().to_string(),
+        node_type: node_type_label(node).to_string(),
+        name: name.clone(),
+        path: path.clone(),
+        children: node
+            .children()
+            .iter()
+            .map(|child| child.id().to_string())
+            .collect(),
+    });
+
+    for child in node.children() {
+        flatten_skeleton(child, path.as_str(), out);
+    }
+}
+
+fn build_search_index_entries(root: &ui_spec::UiSpec) -> Vec<agent_context::SearchIndexEntry> {
+    let mut entries = Vec::new();
+    flatten_search_entries(root, "", &mut entries);
+    entries
+}
+
+fn flatten_search_entries(
+    node: &ui_spec::UiSpec,
+    parent_path: &str,
+    out: &mut Vec<agent_context::SearchIndexEntry>,
+) {
+    let name = node_name(node).to_string();
+    let path = if parent_path.is_empty() {
+        name.clone()
+    } else {
+        format!("{parent_path}/{name}")
+    };
+
+    let mut raw_tokens = vec![name.clone()];
+    if let ui_spec::UiSpec::Container { text, .. } = node
+        && !text.is_empty()
+    {
+        raw_tokens.push(text.clone());
+    }
+
+    let mut normalized_tokens = std::collections::BTreeSet::new();
+    for token in raw_tokens
+        .iter()
+        .flat_map(|value| agent_context::normalize_tokens(value))
+    {
+        normalized_tokens.insert(token);
+    }
+
+    let geometry_tags = infer_geometry_tags(path.as_str());
+
+    out.push(agent_context::SearchIndexEntry {
+        node_id: node.id().to_string(),
+        name: name.clone(),
+        node_type: node_type_label(node).to_string(),
+        path: path.clone(),
+        raw_tokens,
+        normalized_tokens: normalized_tokens.into_iter().collect(),
+        aliases: Vec::new(),
+        geometry_tags,
+    });
+
+    for child in node.children() {
+        flatten_search_entries(child, path.as_str(), out);
+    }
+}
+
+fn infer_geometry_tags(path: &str) -> Vec<String> {
+    let path_tokens = agent_context::normalize_tokens(path);
+    let mut tags = std::collections::BTreeSet::new();
+    for token in path_tokens {
+        if matches!(
+            token.as_str(),
+            "header" | "footer" | "sidebar" | "left" | "right" | "center" | "body" | "content"
+        ) {
+            tags.insert(token);
+        }
+    }
+    tags.into_iter().collect()
+}
+
+fn node_name(node: &ui_spec::UiSpec) -> &str {
+    match node {
+        ui_spec::UiSpec::Container { name, .. }
+        | ui_spec::UiSpec::Instance { name, .. }
+        | ui_spec::UiSpec::Text { name, .. }
+        | ui_spec::UiSpec::Image { name, .. }
+        | ui_spec::UiSpec::Shape { name, .. }
+        | ui_spec::UiSpec::Vector { name, .. } => name.as_str(),
+    }
+}
+
+fn node_type_label(node: &ui_spec::UiSpec) -> &'static str {
+    match node.node_type() {
+        ui_spec::NodeType::Container => "CONTAINER",
+        ui_spec::NodeType::Instance => "INSTANCE",
+        ui_spec::NodeType::Text => "TEXT",
+        ui_spec::NodeType::Image => "IMAGE",
+        ui_spec::NodeType::Shape => "SHAPE",
+        ui_spec::NodeType::Vector => "VECTOR",
+    }
+}
+
 fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
         workspace_root,
@@ -391,6 +560,21 @@ where
 
     let bytes = std::fs::read(path.as_path()).map_err(io_error)?;
     serde_json::from_slice(&bytes).map_err(serialization_error)
+}
+
+fn read_required_ron<T>(workspace_root: &Path, relative_path: &str) -> Result<T, PipelineError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let path = workspace_root.join(relative_path);
+    if !path.exists() {
+        return Err(PipelineError::MissingInputArtifact(
+            relative_path.to_string(),
+        ));
+    }
+
+    let text = std::fs::read_to_string(path.as_path()).map_err(io_error)?;
+    ron::de::from_str(text.as_str()).map_err(serialization_error)
 }
 
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), PipelineError> {
@@ -440,6 +624,7 @@ mod tests {
                 "normalize",
                 "infer-layout",
                 "build-spec",
+                "build-agent-context",
                 "export-assets"
             ]
         );
@@ -454,6 +639,7 @@ mod tests {
                 ("normalize", "output/normalized"),
                 ("infer-layout", "output/inferred"),
                 ("build-spec", "output/specs"),
+                ("build-agent-context", "output/agent"),
                 ("export-assets", "output/assets"),
             ]
         );
@@ -617,6 +803,36 @@ mod tests {
     }
 
     #[test]
+    fn run_stage_build_agent_context_writes_agent_artifacts() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_build_agent_context_writes_agent_artifacts");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run third");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run fourth");
+
+        let result = run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect("build-agent-context should run");
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "build-agent-context",
+                output_dir: "output/agent",
+                artifact_path: Some("output/agent/agent_context.json".to_string()),
+            }
+        );
+
+        assert!(workspace_root.join("output/agent/agent_context.json").is_file());
+        assert!(workspace_root.join("output/agent/search_index.json").is_file());
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
     fn run_all_in_workspace_executes_stages_in_order() {
         let workspace_root =
             unique_test_workspace_root("run_all_in_workspace_executes_stages_in_order");
@@ -634,6 +850,7 @@ mod tests {
                 "normalize",
                 "infer-layout",
                 "build-spec",
+                "build-agent-context",
                 "export-assets"
             ]
         );
