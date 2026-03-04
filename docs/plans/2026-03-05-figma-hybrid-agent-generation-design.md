@@ -21,6 +21,7 @@ The following decisions were validated during design review on 2026-03-05:
 5. Agent topology in v1: single-agent first (sub-agent mode deferred).
 6. Data format: JSON contracts (not YAML/TOML for primary artifacts).
 7. Search: support fuzzy lookup from visual/text context.
+8. CLI runtime model: stateless run-and-consume in v1 (no always-on background process).
 
 ## Goals
 
@@ -35,6 +36,7 @@ The following decisions were validated during design review on 2026-03-05:
 2. External screenshot matching (outside Figma file scope).
 3. Silent auto-correction on screenshot/node mismatch.
 4. Replacing deterministic core stages with direct LLM-only generation.
+5. Requiring a daemon/session server for normal v1 operation.
 
 ## Architecture
 
@@ -59,6 +61,24 @@ Figma -> fetch -> normalize -> infer-layout -> build-spec
                                                     -> output/generated/<target>/*
                                                     -> output/reports/*
 ```
+
+## CLI Execution Model
+
+Execution model for v1:
+
+1. Run-and-consume by default.
+2. Each CLI/tool command reads deterministic artifacts, performs work, writes outputs, and exits.
+3. No persistent background service is required to use lookup/generation flows.
+
+Implications:
+
+1. Behavior is easier to test and replay from artifacts.
+2. Failures are isolated to one invocation.
+3. Tool commands stay composable in scripts/agents.
+
+Future extension (out of scope for v1):
+
+1. Optional long-lived session mode (for performance only), while preserving artifact-compatible behavior.
 
 ## Artifact Contracts (JSON)
 
@@ -196,9 +216,10 @@ Thresholds:
 Runtime behavior for v1:
 
 1. Ask user target at generation start (for example `swiftui`, `react-tailwind`).
-2. Agent builds code section-by-section using tool calls.
-3. On not-found or ambiguity, agent must continue best-effort output.
-4. All mismatch/ambiguity outcomes are recorded in warning artifacts.
+2. Agent and tool interactions run in stateless command calls over persisted artifacts.
+3. Agent builds code section-by-section using tool calls.
+4. On not-found or ambiguity, agent must continue best-effort output.
+5. All mismatch/ambiguity outcomes are recorded in warning artifacts.
 
 This preserves throughput while making uncertainty explicit.
 
