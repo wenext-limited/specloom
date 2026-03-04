@@ -73,6 +73,152 @@ fn leaf_nodes_omit_empty_children_in_ron() {
 }
 
 #[test]
+fn transform_plan_round_trip_json() {
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::Button,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Drop,
+                children: Vec::new(),
+            },
+            confidence: 0.82,
+            reason: "Action control".to_string(),
+        }],
+    };
+
+    let encoded = serde_json::to_string(&plan).expect("transform plan should serialize");
+    let decoded: TransformPlan =
+        serde_json::from_str(encoded.as_str()).expect("transform plan should deserialize");
+
+    assert_eq!(decoded, plan);
+}
+
+#[test]
+fn transform_plan_validate_rejects_missing_node_id() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Text {
+            id: "1:2".to_string(),
+            name: "Title".to_string(),
+            children: Vec::new(),
+        }],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "9:9".to_string(),
+            suggested_type: SuggestedNodeType::Button,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            confidence: 0.6,
+            reason: "Not present".to_string(),
+        }],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::DecisionNodeNotFound("9:9".to_string())
+    );
+}
+
+#[test]
+fn transform_plan_validate_rejects_replace_with_unknown_child() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![
+            UiSpec::Container {
+                id: "1:2".to_string(),
+                name: "Card".to_string(),
+                text: String::new(),
+                children: vec![UiSpec::Text {
+                    id: "1:3".to_string(),
+                    name: "Label".to_string(),
+                    children: Vec::new(),
+                }],
+            },
+            UiSpec::Text {
+                id: "1:4".to_string(),
+                name: "Footer".to_string(),
+                children: Vec::new(),
+            },
+        ],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::HStack,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::ReplaceWith,
+                children: vec!["9:9".to_string()],
+            },
+            confidence: 0.71,
+            reason: "Force children".to_string(),
+        }],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::ReplacementChildNotFound {
+            node_id: "1:2".to_string(),
+            child_id: "9:9".to_string(),
+        }
+    );
+}
+
+#[test]
+fn transform_plan_validate_rejects_non_replace_mode_with_children() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Text {
+            id: "1:2".to_string(),
+            name: "Label".to_string(),
+            children: Vec::new(),
+        }],
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:1".to_string(),
+            suggested_type: SuggestedNodeType::VStack,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: vec!["1:2".to_string()],
+            },
+            confidence: 0.65,
+            reason: "Invalid with keep".to_string(),
+        }],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::UnexpectedChildrenForMode {
+            node_id: "1:1".to_string(),
+            mode: ChildPolicyMode::Keep,
+        }
+    );
+}
+
+#[test]
 fn build_ui_spec_preserves_original_node_ids() {
     let normalized = figma_normalizer::NormalizationOutput {
         document: figma_normalizer::NormalizedDocument {
