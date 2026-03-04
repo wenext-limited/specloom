@@ -37,6 +37,36 @@ fn fetch_subcommand_rejects_live_input_without_required_values() {
 }
 
 #[test]
+fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
+    let workspace_root =
+        unique_cli_workspace_root("fetch_subcommand_uses_figma_token_from_env_for_live_input");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args([
+            "fetch",
+            "--input",
+            "live",
+            "--file-key",
+            "abc123",
+            "--node-id",
+            "123:456",
+            "--figma-api-base-url",
+            "http://127.0.0.1:9",
+        ])
+        .env("FIGMA_TOKEN", "token-from-env")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("fetch client error:"));
+    assert!(stderr.contains("For live fetch, verify"));
+    assert!(!stderr.contains("live input missing required value(s)"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn stages_subcommand_lists_all_stage_outputs() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .arg("stages")
@@ -190,6 +220,21 @@ fn generate_subcommand_rejects_live_input_without_required_values() {
     assert!(stderr.contains("live input missing required value(s)"));
     assert!(stderr.contains("--node-id"));
     assert!(stderr.contains("FIGMA_TOKEN (or --figma-token)"));
+}
+
+#[test]
+fn generate_subcommand_rejects_live_input_without_required_values_in_json_mode() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["generate", "--input", "live", "--output", "json"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        stderr.trim(),
+        r#"{"error":"live input missing required value(s): --file-key, --node-id, FIGMA_TOKEN (or --figma-token). Provide the missing value(s) and retry."}"#
+    );
 }
 
 #[test]

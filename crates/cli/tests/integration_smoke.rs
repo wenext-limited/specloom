@@ -69,6 +69,26 @@ fn generate_success_smoke() {
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
 
+#[test]
+fn generate_success_with_explicit_fixture_input_smoke() {
+    let workspace_root = unique_cli_workspace_root("generate_success_with_explicit_fixture_input_smoke");
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.json\nstage=gen-swiftui output=output/swift artifact=output/swift/FixtureRootView.swift\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\nstage=report output=output/reports artifact=output/reports/review_report.json\n"
+    );
+    assert!(out.stderr.is_empty());
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
 fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
     let timestamp_nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
