@@ -100,6 +100,53 @@ pub struct SnapshotFetchConfig {
     pub snapshot_path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindNodesStatus {
+    Ok,
+    LowConfidence,
+    NoMatch,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FindNodeCandidate {
+    pub node_id: String,
+    pub score: f32,
+    pub match_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FindNodesResult {
+    pub status: FindNodesStatus,
+    pub candidates: Vec<FindNodeCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeInfoStatus {
+    Ok,
+    NotFound,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NodeInfo {
+    pub node_id: String,
+    pub name: String,
+    pub node_type: String,
+    pub path: String,
+    pub raw_tokens: Vec<String>,
+    pub normalized_tokens: Vec<String>,
+    pub aliases: Vec<String>,
+    pub geometry_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NodeInfoResult {
+    pub status: NodeInfoStatus,
+    pub node: Option<NodeInfo>,
+}
+
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
@@ -200,6 +247,76 @@ pub fn run_all_with_config(
 ) -> Result<Vec<StageExecutionResult>, PipelineError> {
     let workspace_root = std::env::current_dir().map_err(io_error)?;
     run_all_in_workspace_with_config(workspace_root.as_path(), config)
+}
+
+pub fn find_nodes(query: &str, top_k: usize) -> Result<FindNodesResult, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    find_nodes_in_workspace(workspace_root.as_path(), query, top_k)
+}
+
+pub fn find_nodes_in_workspace(
+    workspace_root: &Path,
+    query: &str,
+    top_k: usize,
+) -> Result<FindNodesResult, PipelineError> {
+    let search_index = read_required_json::<agent_context::SearchIndex>(
+        workspace_root,
+        SEARCH_INDEX_ARTIFACT_RELATIVE_PATH,
+    )?;
+    let result = agent_context::rank_candidates(query, search_index.entries.as_slice(), top_k);
+
+    Ok(FindNodesResult {
+        status: map_search_status(result.status),
+        candidates: result
+            .matches
+            .into_iter()
+            .map(|candidate| FindNodeCandidate {
+                node_id: candidate.node_id,
+                score: candidate.score,
+                match_reasons: candidate.match_reasons,
+            })
+            .collect(),
+    })
+}
+
+pub fn get_node_info(node_id: &str) -> Result<NodeInfoResult, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    get_node_info_in_workspace(workspace_root.as_path(), node_id)
+}
+
+pub fn get_node_info_in_workspace(
+    workspace_root: &Path,
+    node_id: &str,
+) -> Result<NodeInfoResult, PipelineError> {
+    let search_index = read_required_json::<agent_context::SearchIndex>(
+        workspace_root,
+        SEARCH_INDEX_ARTIFACT_RELATIVE_PATH,
+    )?;
+
+    let maybe_entry = search_index
+        .entries
+        .into_iter()
+        .find(|entry| entry.node_id == node_id);
+    if let Some(entry) = maybe_entry {
+        return Ok(NodeInfoResult {
+            status: NodeInfoStatus::Ok,
+            node: Some(NodeInfo {
+                node_id: entry.node_id,
+                name: entry.name,
+                node_type: entry.node_type,
+                path: entry.path,
+                raw_tokens: entry.raw_tokens,
+                normalized_tokens: entry.normalized_tokens,
+                aliases: entry.aliases,
+                geometry_tags: entry.geometry_tags,
+            }),
+        });
+    }
+
+    Ok(NodeInfoResult {
+        status: NodeInfoStatus::NotFound,
+        node: None,
+    })
 }
 
 pub fn run_all_in_workspace(
@@ -532,6 +649,15 @@ fn node_type_label(node: &ui_spec::UiSpec) -> &'static str {
     }
 }
 
+fn map_search_status(status: agent_context::SearchStatus) -> FindNodesStatus {
+    match status {
+        agent_context::SearchStatus::Ok => FindNodesStatus::Ok,
+        agent_context::SearchStatus::LowConfidence => FindNodesStatus::LowConfidence,
+        agent_context::SearchStatus::NoMatch => FindNodesStatus::NoMatch,
+        agent_context::SearchStatus::Ambiguous => FindNodesStatus::Ambiguous,
+    }
+}
+
 fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
         workspace_root,
@@ -828,6 +954,53 @@ mod tests {
 
         assert!(workspace_root.join("output/agent/agent_context.json").is_file());
         assert!(workspace_root.join("output/agent/search_index.json").is_file());
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn find_nodes_in_workspace_returns_ranked_candidates() {
+        let workspace_root =
+            unique_test_workspace_root("find_nodes_in_workspace_returns_ranked_candidates");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run third");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run fourth");
+        run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect("build-agent-context should run fifth");
+
+        let result = find_nodes_in_workspace(workspace_root.as_path(), "fixture root", 5)
+            .expect("find_nodes should succeed");
+        assert_eq!(result.status, FindNodesStatus::LowConfidence);
+        assert!(!result.candidates.is_empty());
+        assert_eq!(result.candidates[0].node_id, "0:1");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn get_node_info_in_workspace_returns_not_found_for_missing_node() {
+        let workspace_root =
+            unique_test_workspace_root("get_node_info_in_workspace_returns_not_found");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run third");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run fourth");
+        run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect("build-agent-context should run fifth");
+
+        let result = get_node_info_in_workspace(workspace_root.as_path(), "missing")
+            .expect("node info lookup should succeed");
+        assert_eq!(result.status, NodeInfoStatus::NotFound);
+        assert!(result.node.is_none());
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
