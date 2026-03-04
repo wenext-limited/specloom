@@ -6,6 +6,21 @@ pub const LAYOUT_DECISION_VERSION: &str = "1.0";
 pub const WARNING_LOW_CONFIDENCE_GEOMETRY: &str = "LOW_CONFIDENCE_GEOMETRY";
 pub const WARNING_UNSUPPORTED_NODE_KIND: &str = "UNSUPPORTED_NODE_KIND";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InferenceWarningKind {
+    LowConfidence,
+    UnsupportedFeature,
+    FallbackApplied,
+}
+
+pub fn warning_kind(code: &str) -> InferenceWarningKind {
+    match code {
+        WARNING_LOW_CONFIDENCE_GEOMETRY => InferenceWarningKind::LowConfidence,
+        WARNING_UNSUPPORTED_NODE_KIND => InferenceWarningKind::UnsupportedFeature,
+        _ => InferenceWarningKind::FallbackApplied,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LayoutDecisionRecord {
@@ -562,6 +577,22 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.code == super::WARNING_LOW_CONFIDENCE_GEOMETRY)
+        );
+    }
+
+    #[test]
+    fn warning_kind_maps_known_codes() {
+        assert_eq!(
+            super::warning_kind(super::WARNING_LOW_CONFIDENCE_GEOMETRY),
+            super::InferenceWarningKind::LowConfidence
+        );
+        assert_eq!(
+            super::warning_kind(super::WARNING_UNSUPPORTED_NODE_KIND),
+            super::InferenceWarningKind::UnsupportedFeature
+        );
+        assert_eq!(
+            super::warning_kind("UNKNOWN"),
+            super::InferenceWarningKind::FallbackApplied
         );
     }
 

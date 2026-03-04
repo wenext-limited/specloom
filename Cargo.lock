@@ -206,6 +206,7 @@ dependencies = [
 name = "review_report"
 version = "0.1.0"
 dependencies = [
+ "layout_infer",
  "serde",
  "serde_json",
 ]

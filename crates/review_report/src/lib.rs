@@ -26,6 +26,41 @@ impl ReviewReport {
     }
 }
 
+pub fn map_inference_warnings(warnings: &[layout_infer::InferenceWarning]) -> Vec<ReviewWarning> {
+    warnings
+        .iter()
+        .map(|warning| ReviewWarning {
+            code: warning.code.clone(),
+            category: map_inference_category(warning),
+            severity: map_inference_severity(warning.severity.clone()),
+            message: warning.message.clone(),
+            node_id: warning.node_id.clone(),
+        })
+        .collect()
+}
+
+fn map_inference_category(warning: &layout_infer::InferenceWarning) -> ReviewWarningCategory {
+    match layout_infer::warning_kind(warning.code.as_str()) {
+        layout_infer::InferenceWarningKind::LowConfidence => {
+            ReviewWarningCategory::LowConfidenceLayout
+        }
+        layout_infer::InferenceWarningKind::UnsupportedFeature => {
+            ReviewWarningCategory::UnsupportedFeature
+        }
+        layout_infer::InferenceWarningKind::FallbackApplied => {
+            ReviewWarningCategory::FallbackApplied
+        }
+    }
+}
+
+fn map_inference_severity(severity: layout_infer::WarningSeverity) -> ReviewWarningSeverity {
+    match severity {
+        layout_infer::WarningSeverity::Low => ReviewWarningSeverity::Low,
+        layout_infer::WarningSeverity::Medium => ReviewWarningSeverity::Medium,
+        layout_infer::WarningSeverity::High => ReviewWarningSeverity::High,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReviewWarning {
     pub code: String,
@@ -246,6 +281,37 @@ mod tests {
         assert_eq!(severity_json, "\"medium\"");
         let severity: ReviewWarningSeverity = serde_json::from_str(&severity_json).unwrap();
         assert_eq!(severity, ReviewWarningSeverity::Medium);
+    }
+
+    #[test]
+    fn maps_inference_warnings_into_review_warnings() {
+        let inference_warnings = vec![
+            layout_infer::InferenceWarning {
+                code: layout_infer::WARNING_LOW_CONFIDENCE_GEOMETRY.to_string(),
+                severity: layout_infer::WarningSeverity::Medium,
+                message: "Ambiguous geometry".to_string(),
+                node_id: Some("1:1".to_string()),
+            },
+            layout_infer::InferenceWarning {
+                code: layout_infer::WARNING_UNSUPPORTED_NODE_KIND.to_string(),
+                severity: layout_infer::WarningSeverity::High,
+                message: "Unsupported node kind".to_string(),
+                node_id: Some("2:2".to_string()),
+            },
+        ];
+
+        let mapped = super::map_inference_warnings(&inference_warnings);
+        assert_eq!(mapped.len(), 2);
+        assert_eq!(
+            mapped[0].category,
+            ReviewWarningCategory::LowConfidenceLayout
+        );
+        assert_eq!(mapped[0].severity, ReviewWarningSeverity::Medium);
+        assert_eq!(
+            mapped[1].category,
+            ReviewWarningCategory::UnsupportedFeature
+        );
+        assert_eq!(mapped[1].severity, ReviewWarningSeverity::High);
     }
 
     fn sample_warning(
