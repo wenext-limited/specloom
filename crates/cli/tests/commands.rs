@@ -25,6 +25,7 @@ fn fetch_subcommand_prints_stage_output_directory() {
 fn fetch_subcommand_rejects_live_input_without_required_values() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["fetch", "--input", "live"])
+        .env_remove("FIGMA_TOKEN")
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -259,6 +260,7 @@ fn generate_subcommand_runs_full_pipeline() {
 fn generate_subcommand_rejects_live_input_without_required_values() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["generate", "--input", "live", "--file-key", "abc123"])
+        .env_remove("FIGMA_TOKEN")
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -273,6 +275,7 @@ fn generate_subcommand_rejects_live_input_without_required_values() {
 fn generate_subcommand_rejects_live_input_without_required_values_in_json_mode() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .args(["generate", "--input", "live", "--output", "json"])
+        .env_remove("FIGMA_TOKEN")
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
