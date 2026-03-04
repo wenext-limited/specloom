@@ -191,7 +191,6 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(output.status.success());
     assert!(text.contains("stage=fetch output=output/raw"));
     assert!(text.contains("stage=normalize output=output/normalized"));
-    assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(text.contains("stage=export-assets output=output/assets"));
@@ -241,7 +240,7 @@ fn stages_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-agent-context","output":"output/agent"},{"stage":"export-assets","output":"output/assets"}]}"#
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-agent-context","output":"output/agent"},{"stage":"export-assets","output":"output/assets"}]}"#
     );
 }
 
@@ -313,7 +312,6 @@ fn generate_subcommand_runs_full_pipeline() {
     assert!(output.status.success());
     assert!(text.contains("stage=fetch output=output/raw"));
     assert!(text.contains("stage=normalize output=output/normalized"));
-    assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(!text.contains("stage=gen-swiftui output=output/swift"));
@@ -380,7 +378,6 @@ fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
     assert!(output.status.success());
     assert!(text.contains("stage=fetch output=output/raw"));
     assert!(text.contains("stage=normalize output=output/normalized"));
-    assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(text.contains("stage=export-assets output=output/assets"));
@@ -418,7 +415,7 @@ fn generate_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.ron"},{"stage":"build-agent-context","output":"output/agent","artifact":"output/agent/agent_context.json"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"}]}"#
+        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.ron"},{"stage":"build-agent-context","output":"output/agent","artifact":"output/agent/agent_context.json"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"}]}"#
     );
 
     let _ = std::fs::remove_dir_all(&workspace_root);

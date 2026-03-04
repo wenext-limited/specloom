@@ -11,11 +11,6 @@
       "artifact": "output/normalized/normalized_document.json"
     },
     {
-      "stage": "infer-layout",
-      "output": "output/inferred",
-      "artifact": "output/inferred/layout_inference.json"
-    },
-    {
       "stage": "build-spec",
       "output": "output/specs",
       "artifact": "output/specs/ui_spec.ron"

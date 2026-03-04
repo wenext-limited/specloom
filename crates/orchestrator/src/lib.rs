@@ -149,7 +149,6 @@ pub struct NodeInfoResult {
 
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
-const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.ron";
 const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
 const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
@@ -172,7 +171,6 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
     match artifact_path {
         FETCH_ARTIFACT_RELATIVE_PATH => Some("fetch"),
         NORMALIZED_ARTIFACT_RELATIVE_PATH => Some("normalize"),
-        INFERRED_ARTIFACT_RELATIVE_PATH => Some("infer-layout"),
         SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         SEARCH_INDEX_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
@@ -181,7 +179,7 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
     }
 }
 
-const PIPELINE_STAGES: [PipelineStageDefinition; 6] = [
+const PIPELINE_STAGES: [PipelineStageDefinition; 5] = [
     PipelineStageDefinition {
         name: "fetch",
         output_dir: "output/raw",
@@ -189,10 +187,6 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 6] = [
     PipelineStageDefinition {
         name: "normalize",
         output_dir: "output/normalized",
-    },
-    PipelineStageDefinition {
-        name: "infer-layout",
-        output_dir: "output/inferred",
     },
     PipelineStageDefinition {
         name: "build-spec",
@@ -208,10 +202,9 @@ const PIPELINE_STAGES: [PipelineStageDefinition; 6] = [
     },
 ];
 
-const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 6] = [
+const DEFAULT_RUN_ALL_STAGE_NAMES: [&str; 5] = [
     "fetch",
     "normalize",
-    "infer-layout",
     "build-spec",
     "build-agent-context",
     "export-assets",
@@ -421,7 +414,6 @@ pub fn run_stage_in_workspace_with_config(
     let output = match stage_name {
         "fetch" => Some(run_fetch_stage(workspace_root, &config.fetch_mode)?),
         "normalize" => Some(run_normalize_stage(workspace_root)?),
-        "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
         "build-agent-context" => Some(run_build_agent_context_stage(workspace_root)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
@@ -522,33 +514,12 @@ fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     Ok(normalize_result_path(workspace_root, output_path.as_path()))
 }
 
-fn run_infer_layout_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
-        workspace_root,
-        NORMALIZED_ARTIFACT_RELATIVE_PATH,
-    )?;
-
-    let inferred = layout_infer::infer_layout(&normalized.document);
-    let output_path = workspace_root.join(INFERRED_ARTIFACT_RELATIVE_PATH);
-    write_bytes(
-        output_path.as_path(),
-        serde_json::to_vec_pretty(&inferred)
-            .map_err(serialization_error)?
-            .as_slice(),
-    )?;
-
-    Ok(normalize_result_path(workspace_root, output_path.as_path()))
-}
-
 fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
         workspace_root,
         NORMALIZED_ARTIFACT_RELATIVE_PATH,
     )?;
-    let inferred = read_required_json::<layout_infer::InferredLayoutDocument>(
-        workspace_root,
-        INFERRED_ARTIFACT_RELATIVE_PATH,
-    )?;
+    let inferred = layout_infer::infer_layout(&normalized.document);
 
     let spec = ui_spec::build_ui_spec(&normalized, &inferred).map_err(ui_spec_build_error)?;
     let encoded = spec
@@ -902,7 +873,6 @@ mod tests {
             vec![
                 "fetch",
                 "normalize",
-                "infer-layout",
                 "build-spec",
                 "build-agent-context",
                 "export-assets"
@@ -917,7 +887,6 @@ mod tests {
             vec![
                 ("fetch", "output/raw"),
                 ("normalize", "output/normalized"),
-                ("infer-layout", "output/inferred"),
                 ("build-spec", "output/specs"),
                 ("build-agent-context", "output/agent"),
                 ("export-assets", "output/assets"),
@@ -1026,8 +995,6 @@ mod tests {
         run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
         run_stage_in_workspace("normalize", workspace_root.as_path())
             .expect("normalize should run second");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run third");
 
         let result = run_stage_in_workspace("build-spec", workspace_root.as_path())
             .expect("build-spec should run");
@@ -1090,10 +1057,8 @@ mod tests {
         run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
         run_stage_in_workspace("normalize", workspace_root.as_path())
             .expect("normalize should run second");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run third");
         run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run fourth");
+            .expect("build-spec should run third");
 
         let result = run_stage_in_workspace("build-agent-context", workspace_root.as_path())
             .expect("build-agent-context should run");
@@ -1120,12 +1085,10 @@ mod tests {
         run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
         run_stage_in_workspace("normalize", workspace_root.as_path())
             .expect("normalize should run second");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run third");
         run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run fourth");
+            .expect("build-spec should run third");
         run_stage_in_workspace("build-agent-context", workspace_root.as_path())
-            .expect("build-agent-context should run fifth");
+            .expect("build-agent-context should run fourth");
 
         let result = find_nodes_in_workspace(workspace_root.as_path(), "fixture root", 5)
             .expect("find_nodes should succeed");
@@ -1144,12 +1107,10 @@ mod tests {
         run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
         run_stage_in_workspace("normalize", workspace_root.as_path())
             .expect("normalize should run second");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run third");
         run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run fourth");
+            .expect("build-spec should run third");
         run_stage_in_workspace("build-agent-context", workspace_root.as_path())
-            .expect("build-agent-context should run fifth");
+            .expect("build-agent-context should run fourth");
 
         let result = get_node_info_in_workspace(workspace_root.as_path(), "missing")
             .expect("node info lookup should succeed");
@@ -1167,12 +1128,10 @@ mod tests {
         run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
         run_stage_in_workspace("normalize", workspace_root.as_path())
             .expect("normalize should run second");
-        run_stage_in_workspace("infer-layout", workspace_root.as_path())
-            .expect("infer-layout should run third");
         run_stage_in_workspace("build-spec", workspace_root.as_path())
-            .expect("build-spec should run fourth");
+            .expect("build-spec should run third");
         run_stage_in_workspace("build-agent-context", workspace_root.as_path())
-            .expect("build-agent-context should run fifth");
+            .expect("build-agent-context should run fourth");
 
         let result = find_nodes_in_workspace(workspace_root.as_path(), "query-that-does-not-match", 5)
             .expect("find_nodes should succeed");
@@ -1206,7 +1165,6 @@ mod tests {
             vec![
                 "fetch",
                 "normalize",
-                "infer-layout",
                 "build-spec",
                 "build-agent-context",
                 "export-assets"
