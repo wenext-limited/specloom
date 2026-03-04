@@ -67,10 +67,7 @@ fn main() {
             Command::RunStage { stage, output } => match orchestrator::run_stage(&stage) {
                 Ok(result) => match output {
                     OutputMode::Text => {
-                        println!(
-                            "stage={} output={}",
-                            result.stage_name, result.output_dir
-                        );
+                        println!("stage={} output={}", result.stage_name, result.output_dir);
                     }
                     OutputMode::Json => {
                         println!(

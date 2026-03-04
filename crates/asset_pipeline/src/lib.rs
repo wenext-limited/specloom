@@ -89,7 +89,10 @@ mod tests {
                 .iter()
                 .map(|asset| asset.hashed_output_filename.clone())
                 .collect::<Vec<_>>(),
-            vec!["img_primary_button.png".to_string(), "img_logo_mark.pdf".to_string()]
+            vec![
+                "img_primary_button.png".to_string(),
+                "img_logo_mark.pdf".to_string()
+            ]
         );
     }
 

@@ -194,7 +194,10 @@ mod tests {
         let doc = sample_document();
         let json = serde_json::to_string_pretty(&doc).unwrap();
         let back: NormalizedDocument = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.nodes[0].children, vec!["2:1".to_string(), "3:1".to_string()]);
+        assert_eq!(
+            back.nodes[0].children,
+            vec!["2:1".to_string(), "3:1".to_string()]
+        );
     }
 
     #[test]
@@ -203,7 +206,10 @@ mod tests {
         let json = serde_json::to_string_pretty(&doc).unwrap();
         let back: NormalizedDocument = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            back.nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>(),
+            back.nodes
+                .iter()
+                .map(|node| node.id.clone())
+                .collect::<Vec<_>>(),
             vec!["1:1".to_string(), "2:1".to_string(), "3:1".to_string()]
         );
     }
@@ -227,7 +233,10 @@ mod tests {
             .get("source")
             .and_then(Value::as_object)
             .expect("source should serialize as an object");
-        assert_eq!(source.get("file_key"), Some(&Value::String("abc123".to_string())));
+        assert_eq!(
+            source.get("file_key"),
+            Some(&Value::String("abc123".to_string()))
+        );
         assert_eq!(
             source.get("root_node_id"),
             Some(&Value::String("1:1".to_string()))
