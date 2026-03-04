@@ -266,16 +266,23 @@ impl Default for NormalizedSource {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedNode {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     pub name: String,
     pub kind: NodeKind,
     pub visible: bool,
     pub bounds: Bounds,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<LayoutMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub constraints: Option<LayoutConstraints>,
     pub style: NodeStyle,
     pub component: ComponentMetadata,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub passthrough_fields: BTreeMap<String, Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<String>,
 }
 
@@ -355,14 +362,20 @@ pub enum ConstraintMode {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeStyle {
     pub opacity: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub corner_radius: Option<f32>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<Paint>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub strokes: Vec<Stroke>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Paint {
     pub kind: PaintKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<Color>,
     pub image_ref: Option<String>,
 }
@@ -391,9 +404,14 @@ pub struct Stroke {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComponentMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub component_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub component_set_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub instance_of: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub variant_properties: Vec<VariantProperty>,
 }
 
@@ -479,6 +497,28 @@ mod tests {
         let doc = NormalizedDocument::default();
         assert_eq!(doc.schema_version, NORMALIZED_SCHEMA_VERSION);
         assert_eq!(doc.source.figma_api_version, FIGMA_API_VERSION);
+    }
+
+    #[test]
+    fn normalized_node_deserializes_when_empty_collections_are_omitted() {
+        let node: NormalizedNode = serde_json::from_str(
+            r#"{
+                "id": "1:1",
+                "name": "Root",
+                "kind": "frame",
+                "visible": true,
+                "bounds": { "x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0 },
+                "style": { "opacity": 1.0 },
+                "component": {}
+            }"#,
+        )
+        .expect("node without empty collection fields should deserialize");
+
+        assert!(node.children.is_empty());
+        assert!(node.passthrough_fields.is_empty());
+        assert!(node.style.fills.is_empty());
+        assert!(node.style.strokes.is_empty());
+        assert!(node.component.variant_properties.is_empty());
     }
 
     #[test]
