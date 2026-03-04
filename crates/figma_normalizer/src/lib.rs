@@ -137,6 +137,7 @@ fn map_node_kind(
         "TEXT" => NodeKind::Text,
         "RECTANGLE" => NodeKind::Rectangle,
         "ELLIPSE" => NodeKind::Ellipse,
+        "STAR" => NodeKind::Star,
         "VECTOR" => NodeKind::Vector,
         other => {
             warnings.push(NormalizationWarning {
@@ -429,6 +430,7 @@ pub enum NodeKind {
     Text,
     Rectangle,
     Ellipse,
+    Star,
     Vector,
     Unknown,
 }
