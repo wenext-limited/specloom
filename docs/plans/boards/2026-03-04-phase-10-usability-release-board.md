@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [x] | P10-T1 | Add root quickstart README | codex | - | `README.md`, `docs/proposal.md` | docs self-check walkthrough | `<pending>` | Started 2026-03-04 15:57 CST; added root quickstart with input/output scope and validated documented CLI commands |
+| [x] | P10-T1 | Add root quickstart README | codex | - | `README.md`, `docs/proposal.md` | docs self-check walkthrough | `71780cb` | Started 2026-03-04 15:57 CST; added root quickstart with input/output scope and validated documented CLI commands |
 | [ ] | P10-T2 | Document full CLI workflow | unassigned | P10-T1 | `README.md`, `docs/plans/boards/README.md` | docs self-check + command copy/paste check | - | Cover `stages`, `run-stage`, `generate` |
 | [ ] | P10-T3 | Harden CLI and orchestrator error UX | unassigned | - | `crates/cli/src/main.rs`, `crates/orchestrator/src/lib.rs`, `crates/cli/tests/commands.rs` | `cargo test -p cli && cargo test -p orchestrator` | - | Actionable messages and stable exit codes |
 | [ ] | P10-T4 | Extend verification script with e2e smoke | unassigned | P10-T3 | `scripts/verify_workspace.sh` | `bash scripts/verify_workspace.sh` | - | Keep script deterministic and CI-friendly |
