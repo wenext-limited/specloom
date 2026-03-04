@@ -90,6 +90,40 @@ fn generate_success_with_explicit_fixture_input_smoke() {
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
 
+#[test]
+fn prepare_llm_bundle_success_smoke() {
+    let workspace_root = unique_cli_workspace_root("prepare_llm_bundle_success_smoke");
+
+    let generate_out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .arg("generate")
+        .output()
+        .unwrap();
+    assert!(
+        generate_out.status.success(),
+        "generate should succeed before prepare-llm-bundle"
+    );
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args(["run-stage", "prepare-llm-bundle"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "stage=prepare-llm-bundle output=output/llm\n"
+    );
+    assert!(out.stderr.is_empty());
+    assert!(
+        workspace_root.join("output/llm/llm_bundle.json").is_file(),
+        "prepare-llm-bundle artifact should exist"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
 fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
     let timestamp_nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

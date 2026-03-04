@@ -24,6 +24,7 @@ enum Command {
     BuildUiBlueprint,
     #[command(hide = true)]
     GenSwiftui,
+    PrepareLlmBundle,
     ExportAssets,
     Report,
     Generate {
@@ -204,6 +205,7 @@ impl Command {
             Command::BuildSpec => "build-spec",
             Command::BuildUiBlueprint => "build-ui-blueprint",
             Command::GenSwiftui => "gen-swiftui",
+            Command::PrepareLlmBundle => "prepare-llm-bundle",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
             Command::Generate { .. } => "generate",

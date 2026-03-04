@@ -130,6 +130,7 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(text.contains("stage=gen-swiftui output=output/swift"));
     assert!(text.contains("stage=export-assets output=output/assets"));
     assert!(text.contains("stage=report output=output/reports"));
+    assert!(text.contains("stage=prepare-llm-bundle output=output/llm"));
 }
 
 #[test]
@@ -176,7 +177,7 @@ fn stages_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-ui-blueprint","output":"output/specs"},{"stage":"gen-swiftui","output":"output/swift"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"}]}"#
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-ui-blueprint","output":"output/specs"},{"stage":"gen-swiftui","output":"output/swift"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"},{"stage":"prepare-llm-bundle","output":"output/llm"}]}"#
     );
 }
 
