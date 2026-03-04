@@ -3,7 +3,7 @@
 **Phase ID:** `P11`
 **Goal:** Add live Figma API/auth fetch support for real end-to-end pipeline runs.
 **Source Plan:** `docs/plans/2026-03-04-live-figma-auth-fetch-implementation.md`
-**Last Updated:** `2026-03-04 16:47 CST`
+**Last Updated:** `2026-03-04 16:49 CST`
 
 ## Status Legend
 
@@ -23,7 +23,7 @@
 | [x] | P11-T6 | Expose live fetch options in CLI | codex | P11-T5 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | `9476868` | Started 2026-03-04 16:41 CST; added live input flags/config handoff with validation for `fetch`/`generate` |
 | [x] | P11-T7 | Add CLI live-mode validation coverage | codex | P11-T6 | `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | `12bb949` | Started 2026-03-04 16:45 CST; added env token fallback and deterministic live validation checks |
 | [x] | P11-T8 | Document live usage in README | codex | P11-T6 | `README.md` | docs self-check + command copy/paste validation | `2cc26cb` | Started 2026-03-04 16:46 CST; documented fixture vs live start-points and copy/paste commands |
-| [~] | P11-T9 | Final verification and closeout | codex | P11-T7,P11-T8 | `docs/plans/boards/2026-03-04-phase-11-live-figma-fetch-board.md` | `cargo fmt --all --check && cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Started 2026-03-04 16:47 CST; running full verification gates, then merge + re-verify on `main` |
+| [x] | P11-T9 | Final verification and closeout | codex | P11-T7,P11-T8 | `docs/plans/boards/2026-03-04-phase-11-live-figma-fetch-board.md` | `cargo fmt --all --check && cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | `e27406e` | Started 2026-03-04 16:47 CST; passed full gates on phase branch, merged into `main`, and re-ran full gates on merged `main` |
 
 ## Parallelization Rules
 
