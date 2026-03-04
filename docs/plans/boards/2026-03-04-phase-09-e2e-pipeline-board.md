@@ -3,7 +3,7 @@
 **Phase ID:** `P9`
 **Goal:** Add full pipeline execution, reporting, and fixture e2e coverage.
 **Source Plan:** `docs/plans/2026-03-04-project-readiness-implementation.md`
-**Last Updated:** `2026-03-04 15:44 CST`
+**Last Updated:** `2026-03-04 15:48 CST`
 
 ## Status Legend
 
@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [~] | P9-T1 | Implement review report stage aggregation | codex | - | `crates/review_report/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p review_report && cargo test -p orchestrator` | - | Started 2026-03-04 15:44 CST; aggregating warnings across stage outputs |
+| [x] | P9-T1 | Implement review report stage aggregation | codex | - | `crates/review_report/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p review_report && cargo test -p orchestrator` | `<pending>` | Started 2026-03-04 15:44 CST; report stage now aggregates normalization/inference/asset warnings into deterministic review artifact |
 | [ ] | P9-T2 | Add orchestrator run-all API | unassigned | P9-T1 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Return ordered stage results |
 | [ ] | P9-T3 | Add CLI generate command | unassigned | P9-T2 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | - | Deterministic text/json outputs and exit codes |
 | [ ] | P9-T4 | Add fixture e2e generate test | unassigned | P9-T3 | `crates/cli/tests/fixtures/`, `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | - | Assert all output artifact families are created |

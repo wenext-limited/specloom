@@ -182,6 +182,7 @@ dependencies = [
  "figma_client",
  "figma_normalizer",
  "layout_infer",
+ "review_report",
  "serde_json",
  "swiftui_ast",
  "swiftui_codegen",
@@ -211,6 +212,8 @@ dependencies = [
 name = "review_report"
 version = "0.1.0"
 dependencies = [
+ "asset_pipeline",
+ "figma_normalizer",
  "layout_infer",
  "serde",
  "serde_json",

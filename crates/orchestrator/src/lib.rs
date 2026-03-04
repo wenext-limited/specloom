@@ -43,6 +43,7 @@ const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.json";
 const SWIFT_ARTIFACT_OUTPUT_DIR: &str = "output/swift";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
+const REPORT_ARTIFACT_RELATIVE_PATH: &str = "output/reports/review_report.json";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -118,6 +119,7 @@ pub fn run_stage_in_workspace(
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
         "gen-swiftui" => Some(run_gen_swiftui_stage(workspace_root)?),
         "export-assets" => Some(run_export_assets_stage(workspace_root)?),
+        "report" => Some(run_report_stage(workspace_root)?),
         _ => None,
     };
 
@@ -287,6 +289,51 @@ fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineErro
     Ok(ASSET_MANIFEST_RELATIVE_PATH.to_string())
 }
 
+fn run_report_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
+    if !normalized_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+    let inferred_path = workspace_root.join(INFERRED_ARTIFACT_RELATIVE_PATH);
+    if !inferred_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            INFERRED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+    let assets_path = workspace_root.join(ASSET_MANIFEST_RELATIVE_PATH);
+    if !assets_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            ASSET_MANIFEST_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let normalized_artifact = std::fs::read_to_string(&normalized_path).map_err(io_error)?;
+    let normalized: figma_normalizer::NormalizationOutput =
+        serde_json::from_str(&normalized_artifact).map_err(serialization_error)?;
+
+    let inferred_artifact = std::fs::read_to_string(&inferred_path).map_err(io_error)?;
+    let inferred: layout_infer::InferredLayoutDocument =
+        serde_json::from_str(&inferred_artifact).map_err(serialization_error)?;
+
+    let assets_artifact = std::fs::read_to_string(&assets_path).map_err(io_error)?;
+    let assets: asset_pipeline::AssetManifest =
+        serde_json::from_str(&assets_artifact).map_err(serialization_error)?;
+
+    let report =
+        review_report::build_review_report(&normalized.warnings, &inferred, &assets.warnings);
+
+    let output_path = workspace_root.join(REPORT_ARTIFACT_RELATIVE_PATH);
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let encoded = serde_json::to_string_pretty(&report).map_err(serialization_error)?;
+    std::fs::write(&output_path, format!("{encoded}\n")).map_err(io_error)?;
+
+    Ok(REPORT_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
 fn io_error(err: std::io::Error) -> PipelineError {
     PipelineError::Io(err.to_string())
 }
@@ -357,15 +404,20 @@ mod tests {
 
     #[test]
     fn run_stage_returns_execution_result_for_known_stage() {
-        let result = run_stage("report").expect("known stage should run");
+        let workspace_root =
+            unique_test_workspace_root("run_stage_returns_execution_result_for_known_stage");
+        let result = run_stage_in_workspace("fetch", workspace_root.as_path())
+            .expect("known stage should run");
         assert_eq!(
             result,
             StageExecutionResult {
-                stage_name: "report",
-                output_dir: "output/reports",
-                artifact_path: None,
+                stage_name: "fetch",
+                output_dir: "output/raw",
+                artifact_path: Some("output/raw/fetch_snapshot.json".to_string()),
             }
         );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
     }
 
     #[test]
@@ -603,6 +655,124 @@ mod tests {
     }
 
     #[test]
+    fn run_stage_report_writes_review_report_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_report_writes_review_report_artifact");
+
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "fixture-file-key".to_string(),
+                    root_node_id: "0:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: Vec::new(),
+            },
+            warnings: vec![figma_normalizer::NormalizationWarning {
+                code: "UNSUPPORTED_NODE_FIELD".to_string(),
+                message: "unsupported field `clipsContent` ignored during normalization"
+                    .to_string(),
+                node_id: Some("0:1".to_string()),
+            }],
+        };
+        let normalized_value =
+            serde_json::to_value(&normalized).expect("normalized artifact should serialize");
+        write_json_artifact(
+            workspace_root.as_path(),
+            "output/normalized/normalized_document.json",
+            &normalized_value,
+        );
+
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "fixture-file-key".to_string(),
+            root_node_id: "0:1".to_string(),
+            decisions: vec![layout_infer::NodeLayoutDecision {
+                node_id: "0:1".to_string(),
+                record: layout_infer::LayoutDecisionRecord {
+                    decision_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+                    selected_strategy: layout_infer::LayoutStrategy::VStack,
+                    confidence: 0.62,
+                    rationale: "ambiguous child geometry".to_string(),
+                    alternatives: Vec::new(),
+                    warnings: vec![layout_infer::InferenceWarning {
+                        code: layout_infer::WARNING_LOW_CONFIDENCE_GEOMETRY.to_string(),
+                        severity: layout_infer::WarningSeverity::Medium,
+                        message: "Ambiguous geometry".to_string(),
+                        node_id: Some("0:1".to_string()),
+                    }],
+                },
+            }],
+        };
+        let inferred_value =
+            serde_json::to_value(&inferred).expect("inferred artifact should serialize");
+        write_json_artifact(
+            workspace_root.as_path(),
+            "output/inferred/layout_inference.json",
+            &inferred_value,
+        );
+
+        let manifest = asset_pipeline::AssetManifest {
+            manifest_version: asset_pipeline::ASSET_MANIFEST_VERSION.to_string(),
+            generation: asset_pipeline::GenerationMetadata {
+                source_file_key: "fixture-file-key".to_string(),
+                generator_version: "0.1.0".to_string(),
+            },
+            assets: Vec::new(),
+            warnings: vec![asset_pipeline::AssetExportWarning {
+                code: "MISSING_IMAGE_REF".to_string(),
+                message: "Image fill had no image_ref and was skipped.".to_string(),
+                node_id: Some("2:2".to_string()),
+                fallback_applied: false,
+            }],
+        };
+        let manifest_value =
+            serde_json::to_value(&manifest).expect("asset manifest should serialize");
+        write_json_artifact(
+            workspace_root.as_path(),
+            "output/assets/asset_manifest.json",
+            &manifest_value,
+        );
+
+        let result =
+            run_stage_in_workspace("report", workspace_root.as_path()).expect("report should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "report",
+                output_dir: "output/reports",
+                artifact_path: Some("output/reports/review_report.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/reports/review_report.json");
+        assert!(artifact_path.is_file(), "review report artifact should exist");
+
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let report: review_report::ReviewReport =
+            serde_json::from_str(&artifact).expect("artifact should be valid report json");
+        assert_eq!(report.report_version, "1.0");
+        assert_eq!(report.summary.total_warnings, 3);
+        assert_eq!(
+            report
+                .warnings
+                .iter()
+                .map(|warning| warning.code.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                "UNSUPPORTED_NODE_FIELD".to_string(),
+                "LOW_CONFIDENCE_GEOMETRY".to_string(),
+                "MISSING_IMAGE_REF".to_string(),
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
     fn run_stage_returns_error_for_unknown_stage() {
         let err = run_stage("not-a-stage").expect_err("unknown stage should fail");
         assert_eq!(err, PipelineError::UnknownStage("not-a-stage".to_string()));
@@ -623,5 +793,20 @@ mod tests {
 
     fn ensure_dir(path: &Path) {
         std::fs::create_dir_all(path).expect("test workspace root should be created");
+    }
+
+    fn write_json_artifact(
+        workspace_root: &Path,
+        relative_path: &str,
+        artifact: &serde_json::Value,
+    ) {
+        let output_path = workspace_root.join(relative_path);
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent).expect("artifact parent directory should exist");
+        }
+        let encoded =
+            serde_json::to_string_pretty(artifact).expect("artifact should serialize");
+        std::fs::write(&output_path, format!("{encoded}\n"))
+            .expect("artifact should be written");
     }
 }

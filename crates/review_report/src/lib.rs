@@ -26,6 +26,25 @@ impl ReviewReport {
     }
 }
 
+pub fn build_review_report(
+    normalization_warnings: &[figma_normalizer::NormalizationWarning],
+    inferred_layout: &layout_infer::InferredLayoutDocument,
+    asset_warnings: &[asset_pipeline::AssetExportWarning],
+) -> ReviewReport {
+    let mut warnings = Vec::new();
+    warnings.extend(map_normalization_warnings(normalization_warnings));
+
+    let inferred_warnings = inferred_layout
+        .decisions
+        .iter()
+        .flat_map(|decision| decision.record.warnings.iter().cloned())
+        .collect::<Vec<_>>();
+    warnings.extend(map_inference_warnings(&inferred_warnings));
+
+    warnings.extend(map_asset_warnings(asset_warnings));
+    ReviewReport::from_warnings(warnings)
+}
+
 pub fn map_inference_warnings(warnings: &[layout_infer::InferenceWarning]) -> Vec<ReviewWarning> {
     warnings
         .iter()
@@ -37,6 +56,70 @@ pub fn map_inference_warnings(warnings: &[layout_infer::InferenceWarning]) -> Ve
             node_id: warning.node_id.clone(),
         })
         .collect()
+}
+
+fn map_normalization_warnings(
+    warnings: &[figma_normalizer::NormalizationWarning],
+) -> Vec<ReviewWarning> {
+    warnings
+        .iter()
+        .map(|warning| ReviewWarning {
+            code: warning.code.clone(),
+            category: map_structured_warning_category(warning.code.as_str()),
+            severity: map_structured_warning_severity(warning.code.as_str()),
+            message: warning.message.clone(),
+            node_id: warning.node_id.clone(),
+        })
+        .collect()
+}
+
+fn map_asset_warnings(warnings: &[asset_pipeline::AssetExportWarning]) -> Vec<ReviewWarning> {
+    warnings
+        .iter()
+        .map(|warning| {
+            let (category, severity) = if warning.fallback_applied {
+                (
+                    ReviewWarningCategory::FallbackApplied,
+                    ReviewWarningSeverity::Medium,
+                )
+            } else {
+                (
+                    map_structured_warning_category(warning.code.as_str()),
+                    map_structured_warning_severity(warning.code.as_str()),
+                )
+            };
+
+            ReviewWarning {
+                code: warning.code.clone(),
+                category,
+                severity,
+                message: warning.message.clone(),
+                node_id: warning.node_id.clone(),
+            }
+        })
+        .collect()
+}
+
+fn map_structured_warning_category(code: &str) -> ReviewWarningCategory {
+    if code.starts_with("UNSUPPORTED_") {
+        ReviewWarningCategory::UnsupportedFeature
+    } else if code.starts_with("LOW_CONFIDENCE_") {
+        ReviewWarningCategory::LowConfidenceLayout
+    } else if code.contains("FALLBACK") {
+        ReviewWarningCategory::FallbackApplied
+    } else {
+        ReviewWarningCategory::DataLossRisk
+    }
+}
+
+fn map_structured_warning_severity(code: &str) -> ReviewWarningSeverity {
+    if code.starts_with("UNSUPPORTED_") || code.starts_with("MISSING_") {
+        ReviewWarningSeverity::High
+    } else if code.starts_with("LOW_CONFIDENCE_") || code.contains("FALLBACK") {
+        ReviewWarningSeverity::Medium
+    } else {
+        ReviewWarningSeverity::Low
+    }
 }
 
 fn map_inference_category(warning: &layout_infer::InferenceWarning) -> ReviewWarningCategory {
@@ -312,6 +395,93 @@ mod tests {
             ReviewWarningCategory::UnsupportedFeature
         );
         assert_eq!(mapped[1].severity, ReviewWarningSeverity::High);
+    }
+
+    #[test]
+    fn build_review_report_aggregates_warnings_from_all_stage_sources() {
+        let normalization_warnings = vec![figma_normalizer::NormalizationWarning {
+            code: "UNSUPPORTED_NODE_FIELD".to_string(),
+            message: "unsupported field `clipsContent` ignored during normalization".to_string(),
+            node_id: Some("1:1".to_string()),
+        }];
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: vec![layout_infer::NodeLayoutDecision {
+                node_id: "1:1".to_string(),
+                record: layout_infer::LayoutDecisionRecord {
+                    decision_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+                    selected_strategy: layout_infer::LayoutStrategy::VStack,
+                    confidence: 0.62,
+                    rationale: "ambiguous child geometry".to_string(),
+                    alternatives: Vec::new(),
+                    warnings: vec![layout_infer::InferenceWarning {
+                        code: layout_infer::WARNING_LOW_CONFIDENCE_GEOMETRY.to_string(),
+                        severity: layout_infer::WarningSeverity::Medium,
+                        message: "Ambiguous geometry".to_string(),
+                        node_id: Some("1:1".to_string()),
+                    }],
+                },
+            }],
+        };
+        let asset_warnings = vec![asset_pipeline::AssetExportWarning {
+            code: "MISSING_IMAGE_REF".to_string(),
+            message: "Image fill had no image_ref and was skipped.".to_string(),
+            node_id: Some("2:2".to_string()),
+            fallback_applied: false,
+        }];
+
+        let report =
+            super::build_review_report(&normalization_warnings, &inferred, &asset_warnings);
+
+        assert_eq!(
+            report
+                .warnings
+                .iter()
+                .map(|warning| warning.code.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                "UNSUPPORTED_NODE_FIELD".to_string(),
+                "LOW_CONFIDENCE_GEOMETRY".to_string(),
+                "MISSING_IMAGE_REF".to_string(),
+            ]
+        );
+        assert_eq!(
+            report.warnings[0].category,
+            ReviewWarningCategory::UnsupportedFeature
+        );
+        assert_eq!(
+            report.warnings[1].category,
+            ReviewWarningCategory::LowConfidenceLayout
+        );
+        assert_eq!(report.warnings[2].category, ReviewWarningCategory::DataLossRisk);
+        assert_eq!(report.summary.total_warnings, 3);
+    }
+
+    #[test]
+    fn build_review_report_maps_asset_fallback_warning() {
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+        let asset_warnings = vec![asset_pipeline::AssetExportWarning {
+            code: "FORMAT_FALLBACK".to_string(),
+            message: "SVG export unavailable; fell back to PDF.".to_string(),
+            node_id: Some("2:2".to_string()),
+            fallback_applied: true,
+        }];
+
+        let report = super::build_review_report(&Vec::new(), &inferred, &asset_warnings);
+
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(
+            report.warnings[0].category,
+            ReviewWarningCategory::FallbackApplied
+        );
+        assert_eq!(report.warnings[0].severity, ReviewWarningSeverity::Medium);
     }
 
     fn sample_warning(
