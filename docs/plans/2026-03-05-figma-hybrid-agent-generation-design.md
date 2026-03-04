@@ -10,6 +10,8 @@ This design refines the repository pipeline for an agentic UI generation workflo
 
 The design explicitly targets the current Rust workspace and keeps deterministic stages authoritative.
 
+> **Update (2026-03-05):** Phase 14 shifts high-level node typing and child-collapse decisions to an explicit agent transform contract (`transform_plan.json` with `child_policy`). See `docs/plans/2026-03-05-agent-transform-build-spec.md`. Under that plan, `infer-layout` is removed from the active default stage path.
+
 ## Decisions Confirmed
 
 The following decisions were validated during design review on 2026-03-05:
