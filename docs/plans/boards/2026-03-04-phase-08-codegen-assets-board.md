@@ -16,7 +16,7 @@
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [x] | P8-T1 | Expand SwiftUI AST model | codex | - | `crates/swiftui_ast/src/lib.rs` | `cargo test -p swiftui_ast` | `c87f124` | Started 2026-03-04 15:52 CST; added typed core nodes/modifiers with deterministic serialization tests |
-| [ ] | P8-T2 | Implement deterministic SwiftUI renderer | unassigned | P8-T1 | `crates/swiftui_codegen/src/lib.rs`, `crates/swiftui_codegen/Cargo.toml` | `cargo test -p swiftui_codegen` | - | Stable indentation and newline behavior |
+| [x] | P8-T2 | Implement deterministic SwiftUI renderer | codex | P8-T1 | `crates/swiftui_codegen/src/lib.rs`, `crates/swiftui_codegen/Cargo.toml` | `cargo test -p swiftui_codegen` | `c004328` | Started 2026-03-04 15:54 CST; deterministic renderer with stable formatting/modifier emission implemented |
 | [ ] | P8-T3 | Wire gen-swiftui stage from spec to files | unassigned | P8-T1,P8-T2 | `crates/orchestrator/src/lib.rs`, `crates/swiftui_ast/src/lib.rs`, `crates/swiftui_codegen/src/lib.rs` | `cargo test -p orchestrator && cargo test -p cli --test integration_smoke` | - | Write `.swift` under `output/swift/` |
 | [ ] | P8-T4 | Implement export-assets stage manifest builder | unassigned | - | `crates/asset_pipeline/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p asset_pipeline && cargo test -p orchestrator` | - | Deterministic `output/assets/*.json` |
 | [ ] | P8-T5 | Phase verification and closeout | unassigned | P8-T3,P8-T4 | `docs/plans/boards/2026-03-04-phase-08-codegen-assets-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge phase to `main` after pass |
