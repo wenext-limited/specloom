@@ -52,6 +52,8 @@ struct FetchInputOptions {
     #[arg(long, value_enum, default_value_t = InputMode::Fixture)]
     input: InputMode,
     #[arg(long)]
+    figma_url: Option<String>,
+    #[arg(long)]
     file_key: Option<String>,
     #[arg(long)]
     node_id: Option<String>,
@@ -66,6 +68,12 @@ enum InputMode {
     #[default]
     Fixture,
     Live,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedFigmaQuickLink {
+    file_key: String,
+    node_id: String,
 }
 
 fn main() {
@@ -244,18 +252,29 @@ fn build_fetch_config(
     match input.input {
         InputMode::Fixture => Ok(orchestrator::PipelineRunConfig::default()),
         InputMode::Live => {
-            let file_key = normalize_optional_field(input.file_key.as_deref());
-            let node_id = normalize_optional_field(input.node_id.as_deref());
+            let parsed_quick_link = normalize_optional_field(input.figma_url.as_deref())
+                .map(|url| parse_figma_quick_link(url.as_str()))
+                .transpose()?;
+            let file_key = normalize_optional_field(input.file_key.as_deref()).or_else(|| {
+                parsed_quick_link
+                    .as_ref()
+                    .map(|parsed| parsed.file_key.clone())
+            });
+            let node_id = normalize_optional_field(input.node_id.as_deref()).or_else(|| {
+                parsed_quick_link
+                    .as_ref()
+                    .map(|parsed| parsed.node_id.clone())
+            });
             let figma_token = normalize_optional_field(input.figma_token.as_deref())
                 .or_else(figma_token_from_env);
             let api_base_url = normalize_optional_field(input.figma_api_base_url.as_deref());
 
             let mut missing_values = Vec::new();
             if file_key.is_none() {
-                missing_values.push("--file-key");
+                missing_values.push("--file-key (or --figma-url)");
             }
             if node_id.is_none() {
-                missing_values.push("--node-id");
+                missing_values.push("--node-id (or --figma-url)");
             }
             if figma_token.is_none() {
                 missing_values.push("FIGMA_TOKEN (or --figma-token)");
@@ -299,4 +318,90 @@ fn emit_usage_error_and_exit(message: &str, output: OutputMode) -> ! {
         OutputMode::Json => eprintln!("{{\"error\":\"{}\"}}", json_escape(message)),
     }
     std::process::exit(2);
+}
+
+fn parse_figma_quick_link(value: &str) -> Result<ParsedFigmaQuickLink, String> {
+    let parsed = url::Url::parse(value)
+        .map_err(|err| format!("invalid --figma-url: {err}. Provide a valid Figma design URL."))?;
+
+    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    if host != "figma.com" && host != "www.figma.com" {
+        return Err("invalid --figma-url: host must be figma.com or www.figma.com.".to_string());
+    }
+
+    let segments: Vec<_> = parsed
+        .path_segments()
+        .map(|parts| parts.collect())
+        .unwrap_or_default();
+    let file_key = match segments.as_slice() {
+        [kind, key, ..] if matches!(*kind, "design" | "file" | "proto") && !key.is_empty() => {
+            key.to_string()
+        }
+        _ => {
+            return Err("invalid --figma-url: could not parse file key from URL path.".to_string());
+        }
+    };
+
+    let node_id = parsed
+        .query_pairs()
+        .find(|(key, _)| key == "node-id")
+        .map(|(_, value)| value.to_string())
+        .map(|node_id| normalize_figma_node_id(node_id.as_str()))
+        .filter(|node_id| !node_id.is_empty())
+        .ok_or_else(|| {
+            "invalid --figma-url: missing required node-id query parameter.".to_string()
+        })?;
+
+    Ok(ParsedFigmaQuickLink { file_key, node_id })
+}
+
+fn normalize_figma_node_id(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return String::new();
+    }
+    if value.contains(':') {
+        return value.to_string();
+    }
+    if let Some((left, right)) = value.split_once('-')
+        && !left.is_empty()
+        && !right.is_empty()
+    {
+        return format!("{left}:{right}");
+    }
+    value.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ParsedFigmaQuickLink, normalize_figma_node_id, parse_figma_quick_link};
+
+    #[test]
+    fn parse_figma_quick_link_extracts_file_key_and_node_id() {
+        let parsed = parse_figma_quick_link(
+            "https://www.figma.com/design/iGk9NrpbnaoODjdoWc2P0g/Test?node-id=79-18523&m=dev",
+        )
+        .expect("quick link should parse");
+
+        assert_eq!(
+            parsed,
+            ParsedFigmaQuickLink {
+                file_key: "iGk9NrpbnaoODjdoWc2P0g".to_string(),
+                node_id: "79:18523".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_figma_quick_link_rejects_missing_node_id() {
+        let err =
+            parse_figma_quick_link("https://www.figma.com/design/iGk9NrpbnaoODjdoWc2P0g/Test")
+                .expect_err("missing node-id should fail");
+        assert!(err.contains("missing required node-id"));
+    }
+
+    #[test]
+    fn normalize_figma_node_id_preserves_colon_format() {
+        assert_eq!(normalize_figma_node_id("79:18523"), "79:18523");
+    }
 }

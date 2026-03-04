@@ -67,6 +67,53 @@ fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
 }
 
 #[test]
+fn fetch_subcommand_accepts_figma_quick_link_for_live_input() {
+    let workspace_root =
+        unique_cli_workspace_root("fetch_subcommand_accepts_figma_quick_link_for_live_input");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args([
+            "fetch",
+            "--input",
+            "live",
+            "--figma-url",
+            "https://www.figma.com/design/iGk9NrpbnaoODjdoWc2P0g/Ludo?node-id=79-18523&m=dev",
+            "--figma-api-base-url",
+            "http://127.0.0.1:9",
+        ])
+        .env("FIGMA_TOKEN", "token-from-env")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("fetch client error:"));
+    assert!(stderr.contains("For live fetch, verify"));
+    assert!(!stderr.contains("live input missing required value(s)"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn fetch_subcommand_rejects_invalid_figma_quick_link() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args([
+            "fetch",
+            "--input",
+            "live",
+            "--figma-url",
+            "https://example.com/not-figma?node-id=79-18523",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("invalid --figma-url"));
+    assert!(stderr.contains("figma.com"));
+}
+
+#[test]
 fn stages_subcommand_lists_all_stage_outputs() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
         .arg("stages")
@@ -233,7 +280,7 @@ fn generate_subcommand_rejects_live_input_without_required_values_in_json_mode()
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         stderr.trim(),
-        r#"{"error":"live input missing required value(s): --file-key, --node-id, FIGMA_TOKEN (or --figma-token). Provide the missing value(s) and retry."}"#
+        r#"{"error":"live input missing required value(s): --file-key (or --figma-url), --node-id (or --figma-url), FIGMA_TOKEN (or --figma-token). Provide the missing value(s) and retry."}"#
     );
 }
 
