@@ -19,7 +19,7 @@
 | [x] | P8-T2 | Implement deterministic SwiftUI renderer | codex | P8-T1 | `crates/swiftui_codegen/src/lib.rs`, `crates/swiftui_codegen/Cargo.toml` | `cargo test -p swiftui_codegen` | `c004328` | Started 2026-03-04 15:54 CST; deterministic renderer with stable formatting/modifier emission implemented |
 | [x] | P8-T3 | Wire gen-swiftui stage from spec to files | codex | P8-T1,P8-T2 | `crates/orchestrator/src/lib.rs`, `crates/swiftui_ast/src/lib.rs`, `crates/swiftui_codegen/src/lib.rs` | `cargo test -p orchestrator && cargo test -p cli --test integration_smoke` | `cd304db` | Started 2026-03-04 15:58 CST; gen-swiftui now maps spec->AST->Swift source and writes deterministic `.swift` artifact |
 | [x] | P8-T4 | Implement export-assets stage manifest builder | codex | - | `crates/asset_pipeline/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p asset_pipeline && cargo test -p orchestrator` | `54104f3` | Started 2026-03-04 16:02 CST; export-assets stage now writes deterministic asset manifest artifact |
-| [x] | P8-T5 | Phase verification and closeout | codex | P8-T3,P8-T4 | `docs/plans/boards/2026-03-04-phase-08-codegen-assets-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | `<pending>` | Started 2026-03-04 16:06 CST; completed full workspace verification gates and prepared merge workflow |
+| [x] | P8-T5 | Phase verification and closeout | codex | P8-T3,P8-T4 | `docs/plans/boards/2026-03-04-phase-08-codegen-assets-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | `9bf6c33` | Started 2026-03-04 16:06 CST; completed full workspace verification gates and prepared merge workflow |
 
 ## Parallelization Rules
 
