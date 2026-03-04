@@ -11,6 +11,9 @@ cargo test -p asset_pipeline asset_entry_field_order_is_deterministic
 cargo test -p review_report summary_includes_zero_counts_for_all_categories_and_severities
 cargo test -p review_report warning_contract_values_are_stable_snake_case
 
+# End-to-end CLI generate smoke and determinism checks.
+cargo test -p cli --test e2e_generate
+
 cargo fmt --all --check
 cargo check --workspace
 cargo test --workspace
