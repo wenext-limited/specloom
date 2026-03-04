@@ -81,16 +81,7 @@ fn main() {
                         );
                     }
                 },
-                Err(err) => {
-                    let message = err.to_string();
-                    match output {
-                        OutputMode::Text => eprintln!("{message}"),
-                        OutputMode::Json => {
-                            eprintln!("{{\"error\":\"{}\"}}", json_escape(&message));
-                        }
-                    }
-                    std::process::exit(2);
-                }
+                Err(err) => emit_error_and_exit(err, output),
             },
             Command::Generate { output } => match orchestrator::run_all() {
                 Ok(results) => match output {
@@ -130,16 +121,7 @@ fn main() {
                         println!("{{\"results\":[{results}]}}");
                     }
                 },
-                Err(err) => {
-                    let message = err.to_string();
-                    match output {
-                        OutputMode::Text => eprintln!("{message}"),
-                        OutputMode::Json => {
-                            eprintln!("{{\"error\":\"{}\"}}", json_escape(&message));
-                        }
-                    }
-                    std::process::exit(2);
-                }
+                Err(err) => emit_error_and_exit(err, output),
             },
             _ => {
                 let stage_name = command.stage_name();
@@ -187,4 +169,15 @@ fn json_escape(value: &str) -> String {
         }
     }
     escaped
+}
+
+fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -> ! {
+    let message = error.actionable_message();
+    match output {
+        OutputMode::Text => eprintln!("{message}"),
+        OutputMode::Json => {
+            eprintln!("{{\"error\":\"{}\"}}", json_escape(&message));
+        }
+    }
+    std::process::exit(2);
 }

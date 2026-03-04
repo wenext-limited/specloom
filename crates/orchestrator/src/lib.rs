@@ -24,6 +24,35 @@ pub enum PipelineError {
     SwiftUiAstBuild(String),
 }
 
+impl PipelineError {
+    pub fn actionable_message(&self) -> String {
+        match self {
+            Self::UnknownStage(stage) => format!(
+                "unknown stage: {stage}. Valid stages: {}. Run `cli stages` to list stage output directories.",
+                pipeline_stage_names().join(", ")
+            ),
+            Self::MissingInputArtifact(artifact_path) => {
+                if let Some(stage_name) = producer_stage_for_artifact(artifact_path.as_str()) {
+                    format!(
+                        "missing input artifact: {artifact_path}. Run `cli run-stage {stage_name}` first, or run `cli generate` to execute the full pipeline."
+                    )
+                } else {
+                    format!(
+                        "missing input artifact: {artifact_path}. Run `cli generate` to execute the full pipeline."
+                    )
+                }
+            }
+            Self::Io(details) => format!(
+                "io error: {details}. Check that the working directory is writable and that `output/` is a directory."
+            ),
+            Self::Serialization(details) => format!(
+                "serialization error: {details}. Delete stale artifacts under `output/` and rerun the upstream stage."
+            ),
+            _ => self.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineStageDefinition {
     pub name: &'static str,
@@ -54,6 +83,18 @@ const FETCH_FIXTURE_JSON: &str = r#"{
     "children": []
   }
 }"#;
+
+fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
+    match artifact_path {
+        FETCH_ARTIFACT_RELATIVE_PATH => Some("fetch"),
+        NORMALIZED_ARTIFACT_RELATIVE_PATH => Some("normalize"),
+        INFERRED_ARTIFACT_RELATIVE_PATH => Some("infer-layout"),
+        SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
+        ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
+        REPORT_ARTIFACT_RELATIVE_PATH => Some("report"),
+        _ => None,
+    }
+}
 
 const PIPELINE_STAGES: [PipelineStageDefinition; 7] = [
     PipelineStageDefinition {
@@ -398,6 +439,32 @@ mod tests {
     fn unsupported_feature_is_classified() {
         let err = PipelineError::UnsupportedFeature("mask".to_string());
         assert!(err.to_string().contains("unsupported"));
+    }
+
+    #[test]
+    fn unknown_stage_actionable_message_lists_valid_stages() {
+        let message = PipelineError::UnknownStage("not-a-stage".to_string()).actionable_message();
+        assert!(message.contains("unknown stage: not-a-stage"));
+        assert!(message.contains("Valid stages:"));
+        assert!(message.contains("fetch"));
+        assert!(message.contains("Run `cli stages`"));
+    }
+
+    #[test]
+    fn missing_artifact_actionable_message_suggests_upstream_stage() {
+        let message =
+            PipelineError::MissingInputArtifact("output/raw/fetch_snapshot.json".to_string())
+                .actionable_message();
+        assert!(message.contains("missing input artifact"));
+        assert!(message.contains("run-stage fetch"));
+        assert!(message.contains("cli generate"));
+    }
+
+    #[test]
+    fn io_actionable_message_mentions_writable_workspace() {
+        let message = PipelineError::Io("Not a directory".to_string()).actionable_message();
+        assert!(message.contains("io error"));
+        assert!(message.contains("working directory is writable"));
     }
 
     #[test]

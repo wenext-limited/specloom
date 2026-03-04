@@ -44,10 +44,9 @@ fn run_stage_unknown_stage_smoke() {
 
     assert_eq!(out.status.code(), Some(2));
     assert!(out.stdout.is_empty());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stderr),
-        "unknown stage: not-a-stage\n"
-    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unknown stage: not-a-stage"));
+    assert!(stderr.contains("Valid stages:"));
 }
 
 #[test]

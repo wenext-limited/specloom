@@ -67,6 +67,8 @@ fn run_stage_subcommand_rejects_unknown_stage() {
     assert!(!output.status.success());
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
+    assert!(stderr.contains("Valid stages:"));
+    assert!(stderr.contains("Run `cli stages`"));
 }
 
 #[test]
@@ -116,6 +118,26 @@ fn run_stage_subcommand_rejects_unknown_stage_in_json_mode() {
     assert!(!output.status.success());
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
+    assert!(stderr.contains("Valid stages:"));
+}
+
+#[test]
+fn run_stage_subcommand_reports_missing_input_artifact_actionably() {
+    let workspace_root =
+        unique_cli_workspace_root("run_stage_subcommand_reports_missing_input_artifact");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args(["run-stage", "normalize"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("missing input artifact"));
+    assert!(stderr.contains("run-stage fetch"));
+    assert!(stderr.contains("cli generate"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
 }
 
 #[test]
@@ -177,6 +199,7 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     assert!(stderr.contains("io error"));
+    assert!(stderr.contains("working directory is writable"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
