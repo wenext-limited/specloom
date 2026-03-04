@@ -13,13 +13,6 @@ fn generate_produces_all_expected_artifacts_from_fixture() {
         );
     }
 
-    let report_path = workspace_root.join("output/reports/review_report.json");
-    let report_artifact =
-        std::fs::read_to_string(&report_path).expect("report artifact should be readable");
-    let report_json: serde_json::Value =
-        serde_json::from_str(&report_artifact).expect("report artifact should be valid json");
-    assert_eq!(report_json["summary"]["total_warnings"], 0);
-
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
 

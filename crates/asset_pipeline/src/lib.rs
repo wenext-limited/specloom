@@ -21,10 +21,7 @@ impl Default for AssetManifest {
     }
 }
 
-pub fn build_asset_manifest(
-    normalized: &figma_normalizer::NormalizationOutput,
-    spec: &ui_spec::UiSpec,
-) -> AssetManifest {
+pub fn build_asset_manifest(normalized: &figma_normalizer::NormalizationOutput) -> AssetManifest {
     let mut assets = Vec::new();
     let mut warnings = Vec::new();
 
@@ -70,11 +67,7 @@ pub fn build_asset_manifest(
         manifest_version: ASSET_MANIFEST_VERSION.to_string(),
         generation: GenerationMetadata {
             source_file_key: normalized.document.source.file_key.clone(),
-            generator_version: if spec.source.generator_version.is_empty() {
-                "0.1.0".to_string()
-            } else {
-                spec.source.generator_version.clone()
-            },
+            generator_version: "0.1.0".to_string(),
         },
         assets,
         warnings,
@@ -242,16 +235,7 @@ mod tests {
             },
             warnings: Vec::new(),
         };
-        let spec = ui_spec::UiSpec {
-            source: ui_spec::UiSpecSource {
-                file_key: "abc123".to_string(),
-                root_node_id: "1:1".to_string(),
-                generator_version: "0.1.0".to_string(),
-            },
-            ..ui_spec::UiSpec::default()
-        };
-
-        let manifest = super::build_asset_manifest(&normalized, &spec);
+        let manifest = super::build_asset_manifest(&normalized);
         assert_eq!(manifest.manifest_version, super::ASSET_MANIFEST_VERSION);
         assert_eq!(manifest.generation.source_file_key, "abc123");
         assert_eq!(manifest.generation.generator_version, "0.1.0");

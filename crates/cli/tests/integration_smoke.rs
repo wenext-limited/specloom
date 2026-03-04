@@ -62,7 +62,7 @@ fn generate_success_smoke() {
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\nstage=report output=output/reports artifact=output/reports/review_report.json\n"
+        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
     );
     assert!(out.stderr.is_empty());
 
@@ -83,59 +83,11 @@ fn generate_success_with_explicit_fixture_input_smoke() {
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\nstage=report output=output/reports artifact=output/reports/review_report.json\n"
+        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
     );
     assert!(out.stderr.is_empty());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
-}
-
-#[test]
-fn prepare_llm_bundle_success_smoke() {
-    let workspace_root = unique_cli_workspace_root("prepare_llm_bundle_success_smoke");
-
-    let generate_out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
-        .current_dir(workspace_root.as_path())
-        .arg("generate")
-        .output()
-        .unwrap();
-    assert!(
-        generate_out.status.success(),
-        "generate should succeed before prepare-llm-bundle"
-    );
-
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
-        .current_dir(workspace_root.as_path())
-        .args(["run-stage", "prepare-llm-bundle"])
-        .output()
-        .unwrap();
-
-    assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        "stage=prepare-llm-bundle output=output/llm\n"
-    );
-    assert!(out.stderr.is_empty());
-    assert!(
-        workspace_root.join("output/llm/llm_bundle.json").is_file(),
-        "prepare-llm-bundle artifact should exist"
-    );
-
-    let _ = std::fs::remove_dir_all(&workspace_root);
-}
-
-#[test]
-fn generate_ui_requires_api_key() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
-        .args(["generate-ui", "--target", "swiftui", "--model", "gpt-5"])
-        .env_remove("OPENAI_API_KEY")
-        .output()
-        .unwrap();
-
-    assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("OPENAI_API_KEY"));
 }
 
 fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {

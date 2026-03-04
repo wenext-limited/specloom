@@ -194,8 +194,6 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(text.contains("stage=export-assets output=output/assets"));
-    assert!(text.contains("stage=report output=output/reports"));
-    assert!(text.contains("stage=prepare-llm-bundle output=output/llm"));
 }
 
 #[test]
@@ -242,7 +240,7 @@ fn stages_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"},{"stage":"prepare-llm-bundle","output":"output/llm"}]}"#
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"export-assets","output":"output/assets"}]}"#
     );
 }
 
@@ -318,7 +316,6 @@ fn generate_subcommand_runs_full_pipeline() {
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(!text.contains("stage=gen-swiftui output=output/swift"));
     assert!(text.contains("stage=export-assets output=output/assets"));
-    assert!(text.contains("stage=report output=output/reports"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
@@ -384,7 +381,6 @@ fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
     assert!(text.contains("stage=export-assets output=output/assets"));
-    assert!(text.contains("stage=report output=output/reports"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
@@ -419,7 +415,7 @@ fn generate_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.json"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"},{"stage":"report","output":"output/reports","artifact":"output/reports/review_report.json"}]}"#
+        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.ron"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"}]}"#
     );
 
     let _ = std::fs::remove_dir_all(&workspace_root);

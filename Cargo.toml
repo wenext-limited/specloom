@@ -5,10 +5,7 @@ members = [
   "crates/figma_normalizer",
   "crates/layout_infer",
   "crates/ui_spec",
-  "crates/llm_bundle",
-  "crates/llm_codegen",
   "crates/asset_pipeline",
-  "crates/review_report",
   "crates/orchestrator",
 ]
 resolver = "2"

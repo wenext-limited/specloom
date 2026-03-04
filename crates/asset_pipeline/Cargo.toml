@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 figma_normalizer = { path = "../figma_normalizer" }
 serde = { version = "1.0", features = ["derive"] }
-ui_spec = { path = "../ui_spec" }
 
 [dev-dependencies]
 serde_json = "1.0"

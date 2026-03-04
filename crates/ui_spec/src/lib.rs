@@ -2,27 +2,27 @@
 
 use std::collections::BTreeMap;
 
-pub const UI_SPEC_VERSION: &str = "1.0";
-pub const UI_SPEC_GENERATOR_VERSION: &str = "0.1.0";
+pub const UI_SPEC_VERSION: &str = "2.0";
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename = "Node")]
 pub struct UiSpec {
-    pub spec_version: String,
-    pub source: UiSpecSource,
-    pub root: UiNode,
+    pub id: u32,
+    #[serde(rename = "type")]
+    pub node_type: NodeType,
+    pub name: String,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<UiSpecWarning>,
+    pub children: Vec<UiSpec>,
 }
 
 impl Default for UiSpec {
     fn default() -> Self {
         Self {
-            spec_version: UI_SPEC_VERSION.to_string(),
-            source: UiSpecSource::default(),
-            root: UiNode::default(),
-            warnings: Vec::new(),
+            id: 1,
+            node_type: NodeType::Container,
+            name: String::new(),
+            children: Vec::new(),
         }
     }
 }
@@ -35,122 +35,18 @@ impl UiSpec {
     pub fn to_pretty_json(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec_pretty(self)
     }
-}
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiSpecSource {
-    pub file_key: String,
-    pub root_node_id: String,
-    pub generator_version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiSpecWarning {
-    pub code: String,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiNode {
-    pub id: String,
-    pub name: String,
-    pub kind: UiNodeKind,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
-    pub layout: UiLayout,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
-    pub style: UiStyle,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub children: Vec<UiNode>,
-}
-
-impl Default for UiNode {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            name: String::new(),
-            kind: UiNodeKind::Unknown,
-            layout: UiLayout::default(),
-            style: UiStyle::default(),
-            children: Vec::new(),
-        }
+    pub fn to_pretty_ron(&self) -> Result<String, ron::Error> {
+        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::new().struct_names(true))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UiNodeKind {
+pub enum NodeType {
     Container,
     Text,
-    Shape,
     Image,
-    Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiLayout {
-    pub strategy: UiLayoutStrategy,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
-    pub item_spacing: f32,
-}
-
-impl Default for UiLayout {
-    fn default() -> Self {
-        Self {
-            strategy: UiLayoutStrategy::Absolute,
-            item_spacing: 0.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UiLayoutStrategy {
-    VStack,
-    HStack,
-    Overlay,
-    Absolute,
-    Scroll,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiStyle {
-    #[serde(default = "default_opacity")]
-    #[serde(skip_serializing_if = "is_default_opacity")]
-    pub opacity: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub corner_radius: Option<f32>,
-}
-
-impl Default for UiStyle {
-    fn default() -> Self {
-        Self {
-            opacity: 1.0,
-            corner_radius: None,
-        }
-    }
-}
-
-fn default_opacity() -> f32 {
-    1.0
-}
-
-fn is_default_opacity(value: &f32) -> bool {
-    (*value - 1.0).abs() <= f32::EPSILON
-}
-
-fn is_default<T: Default + PartialEq>(value: &T) -> bool {
-    value == &T::default()
+    Vector,
 }
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
@@ -159,11 +55,15 @@ pub enum UiSpecBuildError {
     MissingNormalizedRootNode(String),
     #[error("missing normalized node: {0}")]
     MissingNormalizedNode(String),
+    #[error("unsupported normalized node kind `{kind}` at node `{node_id}`")]
+    UnsupportedNormalizedNodeKind { node_id: String, kind: String },
+    #[error("node id overflow while assigning deterministic ids")]
+    NodeIdOverflow,
 }
 
 pub fn build_ui_spec(
     normalized: &figma_normalizer::NormalizationOutput,
-    inferred: &layout_infer::InferredLayoutDocument,
+    _inferred: &layout_infer::InferredLayoutDocument,
 ) -> Result<UiSpec, UiSpecBuildError> {
     let nodes_by_id = normalized
         .document
@@ -171,122 +71,73 @@ pub fn build_ui_spec(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect::<BTreeMap<_, _>>();
-    let decisions_by_id = inferred
-        .decisions
-        .iter()
-        .map(|decision| (decision.node_id.as_str(), &decision.record))
-        .collect::<BTreeMap<_, _>>();
 
     let root_node_id = normalized.document.source.root_node_id.clone();
     if !nodes_by_id.contains_key(root_node_id.as_str()) {
         return Err(UiSpecBuildError::MissingNormalizedRootNode(root_node_id));
     }
 
-    let root = build_ui_node(root_node_id.as_str(), &nodes_by_id, &decisions_by_id)?;
-    let mut warnings = normalized
-        .warnings
-        .iter()
-        .map(|warning| UiSpecWarning {
-            code: warning.code.clone(),
-            message: warning.message.clone(),
-            node_id: warning.node_id.clone(),
-        })
-        .collect::<Vec<_>>();
-    warnings.extend(
-        inferred
-            .decisions
-            .iter()
-            .flat_map(|decision| decision.record.warnings.iter())
-            .map(|warning| UiSpecWarning {
-                code: warning.code.clone(),
-                message: warning.message.clone(),
-                node_id: warning.node_id.clone(),
-            }),
-    );
-
-    Ok(UiSpec {
-        spec_version: UI_SPEC_VERSION.to_string(),
-        source: UiSpecSource {
-            file_key: normalized.document.source.file_key.clone(),
-            root_node_id: normalized.document.source.root_node_id.clone(),
-            generator_version: UI_SPEC_GENERATOR_VERSION.to_string(),
-        },
-        root,
-        warnings,
-    })
+    let mut next_id = 1u32;
+    build_ui_spec_node(root_node_id.as_str(), &nodes_by_id, &mut next_id)
 }
 
-fn build_ui_node(
+fn build_ui_spec_node(
     node_id: &str,
     nodes_by_id: &BTreeMap<&str, &figma_normalizer::NormalizedNode>,
-    decisions_by_id: &BTreeMap<&str, &layout_infer::LayoutDecisionRecord>,
-) -> Result<UiNode, UiSpecBuildError> {
+    next_id: &mut u32,
+) -> Result<UiSpec, UiSpecBuildError> {
     let node = nodes_by_id
         .get(node_id)
         .copied()
         .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(node_id.to_string()))?;
 
+    let assigned_id = *next_id;
+    *next_id = next_id
+        .checked_add(1)
+        .ok_or(UiSpecBuildError::NodeIdOverflow)?;
+
     let children = node
         .children
         .iter()
-        .map(|child_id| build_ui_node(child_id.as_str(), nodes_by_id, decisions_by_id))
+        .map(|child_id| build_ui_spec_node(child_id.as_str(), nodes_by_id, next_id))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let inferred_layout = decisions_by_id.get(node.id.as_str()).copied();
-    Ok(UiNode {
-        id: node.id.clone(),
+    Ok(UiSpec {
+        id: assigned_id,
+        node_type: map_node_type(node)?,
         name: node.name.clone(),
-        kind: map_node_kind(&node.kind),
-        layout: UiLayout {
-            strategy: inferred_layout
-                .map(|decision| map_layout_strategy(&decision.selected_strategy))
-                .unwrap_or_else(|| {
-                    map_layout_mode(node.layout.as_ref().map(|layout| &layout.mode))
-                }),
-            item_spacing: node
-                .layout
-                .as_ref()
-                .map(|layout| layout.item_spacing)
-                .unwrap_or(0.0),
-        },
-        style: UiStyle {
-            opacity: node.style.opacity,
-            corner_radius: node.style.corner_radius,
-        },
         children,
     })
 }
 
-fn map_node_kind(kind: &figma_normalizer::NodeKind) -> UiNodeKind {
-    match kind {
+fn map_node_type(node: &figma_normalizer::NormalizedNode) -> Result<NodeType, UiSpecBuildError> {
+    match node.kind {
         figma_normalizer::NodeKind::Frame
         | figma_normalizer::NodeKind::Group
         | figma_normalizer::NodeKind::Component
         | figma_normalizer::NodeKind::Instance
-        | figma_normalizer::NodeKind::ComponentSet => UiNodeKind::Container,
-        figma_normalizer::NodeKind::Text => UiNodeKind::Text,
+        | figma_normalizer::NodeKind::ComponentSet => Ok(NodeType::Container),
+        figma_normalizer::NodeKind::Text => Ok(NodeType::Text),
         figma_normalizer::NodeKind::Rectangle
         | figma_normalizer::NodeKind::Ellipse
-        | figma_normalizer::NodeKind::Vector => UiNodeKind::Shape,
-        figma_normalizer::NodeKind::Unknown => UiNodeKind::Unknown,
-    }
-}
-
-fn map_layout_mode(mode: Option<&figma_normalizer::LayoutMode>) -> UiLayoutStrategy {
-    match mode {
-        Some(figma_normalizer::LayoutMode::Vertical) => UiLayoutStrategy::VStack,
-        Some(figma_normalizer::LayoutMode::Horizontal) => UiLayoutStrategy::HStack,
-        Some(figma_normalizer::LayoutMode::None) | None => UiLayoutStrategy::Absolute,
-    }
-}
-
-fn map_layout_strategy(strategy: &layout_infer::LayoutStrategy) -> UiLayoutStrategy {
-    match strategy {
-        layout_infer::LayoutStrategy::VStack => UiLayoutStrategy::VStack,
-        layout_infer::LayoutStrategy::HStack => UiLayoutStrategy::HStack,
-        layout_infer::LayoutStrategy::Overlay => UiLayoutStrategy::Overlay,
-        layout_infer::LayoutStrategy::Absolute => UiLayoutStrategy::Absolute,
-        layout_infer::LayoutStrategy::Scroll => UiLayoutStrategy::Scroll,
+        | figma_normalizer::NodeKind::Vector => {
+            let has_image_fill = node
+                .style
+                .fills
+                .iter()
+                .any(|fill| fill.kind == figma_normalizer::PaintKind::Image);
+            if has_image_fill {
+                Ok(NodeType::Image)
+            } else {
+                Ok(NodeType::Vector)
+            }
+        }
+        figma_normalizer::NodeKind::Unknown => {
+            Err(UiSpecBuildError::UnsupportedNormalizedNodeKind {
+                node_id: node.id.clone(),
+                kind: "unknown".to_string(),
+            })
+        }
     }
 }
 
@@ -296,170 +147,58 @@ mod tests {
 
     #[test]
     fn ui_spec_round_trip() {
-        let spec = UiSpec::default();
+        let spec = UiSpec {
+            id: 1,
+            node_type: NodeType::Container,
+            name: "Root".to_string(),
+            children: vec![UiSpec {
+                id: 2,
+                node_type: NodeType::Text,
+                name: "Title".to_string(),
+                children: Vec::new(),
+            }],
+        };
+
         let json = serde_json::to_string(&spec).unwrap();
         let back: UiSpec = serde_json::from_str(&json).unwrap();
         assert_eq!(spec, back);
     }
 
     #[test]
-    fn serialization_is_stable() {
-        let spec = UiSpec::new();
-        let a = spec.to_pretty_json().unwrap();
-        let b = spec.to_pretty_json().unwrap();
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn ui_spec_tree_round_trip() {
+    fn ron_serialization_is_stable() {
         let spec = UiSpec {
-            spec_version: "1.0".to_string(),
-            source: UiSpecSource {
-                file_key: "abc123".to_string(),
-                root_node_id: "1:1".to_string(),
-                generator_version: "0.1.0".to_string(),
-            },
-            root: UiNode {
-                id: "1:1".to_string(),
-                name: "Root".to_string(),
-                kind: UiNodeKind::Container,
-                layout: UiLayout {
-                    strategy: UiLayoutStrategy::VStack,
-                    item_spacing: 12.0,
-                },
-                style: UiStyle {
-                    opacity: 1.0,
-                    corner_radius: Some(8.0),
-                },
-                children: vec![UiNode {
-                    id: "2:1".to_string(),
-                    name: "Title".to_string(),
-                    kind: UiNodeKind::Text,
-                    layout: UiLayout::default(),
-                    style: UiStyle::default(),
-                    children: Vec::new(),
-                }],
-            },
-            warnings: vec![UiSpecWarning {
-                code: "LOW_CONFIDENCE_LAYOUT".to_string(),
-                message: "Layout was inferred from geometry.".to_string(),
-                node_id: Some("1:1".to_string()),
+            id: 1,
+            node_type: NodeType::Container,
+            name: "Root".to_string(),
+            children: vec![UiSpec {
+                id: 2,
+                node_type: NodeType::Vector,
+                name: "Icon".to_string(),
+                children: Vec::new(),
             }],
         };
 
-        let json = serde_json::to_string_pretty(&spec).unwrap();
-        let back: UiSpec = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, spec);
+        let first = spec.to_pretty_ron().unwrap();
+        let second = spec.to_pretty_ron().unwrap();
+        assert_eq!(first, second);
+        assert!(first.contains("Node("));
     }
 
     #[test]
-    fn child_order_is_preserved() {
-        let spec = UiSpec {
-            root: UiNode {
-                children: vec![
-                    UiNode {
-                        id: "2:1".to_string(),
-                        ..UiNode::default()
-                    },
-                    UiNode {
-                        id: "3:1".to_string(),
-                        ..UiNode::default()
-                    },
-                ],
-                ..UiNode::default()
-            },
-            ..UiSpec::default()
+    fn leaf_nodes_omit_empty_children_in_ron() {
+        let leaf = UiSpec {
+            id: 9,
+            node_type: NodeType::Text,
+            name: "Leaf".to_string(),
+            children: Vec::new(),
         };
 
-        let encoded = serde_json::to_string(&spec).unwrap();
-        let decoded: UiSpec = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(
-            decoded
-                .root
-                .children
-                .iter()
-                .map(|node| node.id.clone())
-                .collect::<Vec<_>>(),
-            vec!["2:1".to_string(), "3:1".to_string()]
-        );
+        let ron = leaf.to_pretty_ron().unwrap();
+        assert!(!ron.contains("children"));
     }
 
     #[test]
-    fn empty_fields_are_omitted_and_missing_empty_fields_deserialize() {
-        let encoded_default = serde_json::to_value(UiSpec::default()).unwrap();
-        let object = encoded_default
-            .as_object()
-            .expect("ui spec should serialize as an object");
-        assert!(
-            !object.contains_key("warnings"),
-            "warnings should be omitted when empty"
-        );
-        let root = object
-            .get("root")
-            .and_then(serde_json::Value::as_object)
-            .expect("root should serialize as object");
-        assert!(
-            !root.contains_key("children"),
-            "children should be omitted when empty"
-        );
-
-        let decoded: UiSpec = serde_json::from_str(
-            r#"{
-                "spec_version": "1.0",
-                "source": {
-                    "file_key": "abc123",
-                    "root_node_id": "1:1",
-                    "generator_version": "0.1.0"
-                },
-                "root": {
-                    "id": "1:1",
-                    "name": "Root",
-                    "kind": "container",
-                    "layout": {
-                        "strategy": "absolute",
-                        "item_spacing": 0.0
-                    },
-                    "style": {}
-                }
-            }"#,
-        )
-        .expect("ui spec should deserialize when empty fields are omitted");
-
-        assert!(decoded.warnings.is_empty());
-        assert!(decoded.root.children.is_empty());
-        assert_eq!(decoded.root.style.corner_radius, None);
-
-        assert!(
-            !root.contains_key("style"),
-            "style should be omitted when all style fields are default"
-        );
-
-        let encoded_with_corner_radius = serde_json::to_value(UiSpec {
-            root: UiNode {
-                style: UiStyle {
-                    corner_radius: Some(8.0),
-                    ..UiStyle::default()
-                },
-                ..UiNode::default()
-            },
-            ..UiSpec::default()
-        })
-        .expect("ui spec with non-default style should serialize");
-        let style = encoded_with_corner_radius
-            .get("root")
-            .and_then(serde_json::Value::as_object)
-            .expect("root should serialize as object")
-            .get("style")
-            .and_then(serde_json::Value::as_object)
-            .expect("style should serialize as object");
-        assert!(
-            !style.contains_key("opacity"),
-            "opacity should be omitted when default"
-        );
-    }
-
-    #[test]
-    fn build_ui_spec_maps_layout_and_children_from_inputs() {
+    fn build_ui_spec_maps_tree_with_deterministic_ids() {
         let normalized = figma_normalizer::NormalizationOutput {
             document: figma_normalizer::NormalizedDocument {
                 schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
@@ -469,46 +208,56 @@ mod tests {
                     figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
                 },
                 nodes: vec![
-                    container_node("1:1", None, vec!["2:1".to_string()]),
-                    text_node("2:1", Some("1:1")),
+                    container_node("1:1", vec!["2:1".to_string(), "3:1".to_string()]),
+                    text_node("2:1"),
+                    vector_node("3:1"),
                 ],
             },
-            warnings: vec![figma_normalizer::NormalizationWarning {
-                code: "UNSUPPORTED_NODE_FIELD".to_string(),
-                message: "Unsupported field ignored.".to_string(),
-                node_id: Some("1:1".to_string()),
-            }],
+            warnings: Vec::new(),
         };
         let inferred = layout_infer::InferredLayoutDocument {
             inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
             source_file_key: "abc123".to_string(),
             root_node_id: "1:1".to_string(),
-            decisions: vec![
-                layout_infer::NodeLayoutDecision {
-                    node_id: "1:1".to_string(),
-                    record: layout_infer::LayoutDecisionRecord {
-                        selected_strategy: layout_infer::LayoutStrategy::VStack,
-                        confidence: 0.93,
-                        rationale: "Auto layout metadata.".to_string(),
-                        alternatives: Vec::new(),
-                        warnings: vec![],
-                        ..layout_infer::LayoutDecisionRecord::default()
-                    },
-                },
-                layout_infer::NodeLayoutDecision {
-                    node_id: "2:1".to_string(),
-                    record: layout_infer::LayoutDecisionRecord::default(),
-                },
-            ],
+            decisions: Vec::new(),
         };
 
-        let spec = super::build_ui_spec(&normalized, &inferred).expect("build should succeed");
-        assert_eq!(spec.source.file_key, "abc123");
-        assert_eq!(spec.source.root_node_id, "1:1");
-        assert_eq!(spec.root.layout.strategy, UiLayoutStrategy::VStack);
-        assert_eq!(spec.root.children.len(), 1);
-        assert_eq!(spec.root.children[0].id, "2:1");
-        assert!(!spec.warnings.is_empty());
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.id, 1);
+        assert_eq!(spec.node_type, NodeType::Container);
+        assert_eq!(spec.children.len(), 2);
+        assert_eq!(spec.children[0].id, 2);
+        assert_eq!(spec.children[0].node_type, NodeType::Text);
+        assert_eq!(spec.children[1].id, 3);
+        assert_eq!(spec.children[1].node_type, NodeType::Vector);
+    }
+
+    #[test]
+    fn build_ui_spec_marks_image_fill_nodes_as_image() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    container_node("1:1", vec!["2:1".to_string()]),
+                    image_node("2:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.children[0].node_type, NodeType::Image);
     }
 
     #[test]
@@ -521,7 +270,7 @@ mod tests {
                     root_node_id: "missing-root".to_string(),
                     figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
                 },
-                nodes: vec![text_node("2:1", None)],
+                nodes: vec![text_node("2:1")],
             },
             warnings: Vec::new(),
         };
@@ -532,22 +281,73 @@ mod tests {
             decisions: Vec::new(),
         };
 
-        let err =
-            super::build_ui_spec(&normalized, &inferred).expect_err("missing root should fail");
+        let err = build_ui_spec(&normalized, &inferred).expect_err("missing root should fail");
         assert!(
             err.to_string()
                 .contains("missing normalized root node: missing-root")
         );
     }
 
-    fn container_node(
-        id: &str,
-        parent_id: Option<&str>,
-        children: Vec<String>,
-    ) -> figma_normalizer::NormalizedNode {
+    #[test]
+    fn build_ui_spec_rejects_unknown_node_kind() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![figma_normalizer::NormalizedNode {
+                    id: "1:1".to_string(),
+                    parent_id: None,
+                    name: "Unknown".to_string(),
+                    kind: figma_normalizer::NodeKind::Unknown,
+                    visible: true,
+                    bounds: figma_normalizer::Bounds {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 10.0,
+                        h: 10.0,
+                    },
+                    layout: None,
+                    constraints: None,
+                    style: figma_normalizer::NodeStyle {
+                        opacity: 1.0,
+                        corner_radius: None,
+                        fills: Vec::new(),
+                        strokes: Vec::new(),
+                    },
+                    component: figma_normalizer::ComponentMetadata {
+                        component_id: None,
+                        component_set_id: None,
+                        instance_of: None,
+                        variant_properties: Vec::new(),
+                    },
+                    passthrough_fields: std::collections::BTreeMap::new(),
+                    children: Vec::new(),
+                }],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let err = build_ui_spec(&normalized, &inferred).expect_err("build should fail");
+        assert!(
+            err.to_string()
+                .contains("unsupported normalized node kind `unknown` at node `1:1`")
+        );
+    }
+
+    fn container_node(id: &str, children: Vec<String>) -> figma_normalizer::NormalizedNode {
         figma_normalizer::NormalizedNode {
             id: id.to_string(),
-            parent_id: parent_id.map(str::to_string),
+            parent_id: None,
             name: "Container".to_string(),
             kind: figma_normalizer::NodeKind::Frame,
             visible: true,
@@ -587,10 +387,10 @@ mod tests {
         }
     }
 
-    fn text_node(id: &str, parent_id: Option<&str>) -> figma_normalizer::NormalizedNode {
+    fn text_node(id: &str) -> figma_normalizer::NormalizedNode {
         figma_normalizer::NormalizedNode {
             id: id.to_string(),
-            parent_id: parent_id.map(str::to_string),
+            parent_id: None,
             name: "Text".to_string(),
             kind: figma_normalizer::NodeKind::Text,
             visible: true,
@@ -606,6 +406,74 @@ mod tests {
                 opacity: 1.0,
                 corner_radius: None,
                 fills: Vec::new(),
+                strokes: Vec::new(),
+            },
+            component: figma_normalizer::ComponentMetadata {
+                component_id: None,
+                component_set_id: None,
+                instance_of: None,
+                variant_properties: Vec::new(),
+            },
+            passthrough_fields: std::collections::BTreeMap::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn vector_node(id: &str) -> figma_normalizer::NormalizedNode {
+        figma_normalizer::NormalizedNode {
+            id: id.to_string(),
+            parent_id: None,
+            name: "Vector".to_string(),
+            kind: figma_normalizer::NodeKind::Vector,
+            visible: true,
+            bounds: figma_normalizer::Bounds {
+                x: 0.0,
+                y: 0.0,
+                w: 24.0,
+                h: 24.0,
+            },
+            layout: None,
+            constraints: None,
+            style: figma_normalizer::NodeStyle {
+                opacity: 1.0,
+                corner_radius: None,
+                fills: Vec::new(),
+                strokes: Vec::new(),
+            },
+            component: figma_normalizer::ComponentMetadata {
+                component_id: None,
+                component_set_id: None,
+                instance_of: None,
+                variant_properties: Vec::new(),
+            },
+            passthrough_fields: std::collections::BTreeMap::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn image_node(id: &str) -> figma_normalizer::NormalizedNode {
+        figma_normalizer::NormalizedNode {
+            id: id.to_string(),
+            parent_id: None,
+            name: "Avatar Graphic".to_string(),
+            kind: figma_normalizer::NodeKind::Rectangle,
+            visible: true,
+            bounds: figma_normalizer::Bounds {
+                x: 0.0,
+                y: 0.0,
+                w: 64.0,
+                h: 64.0,
+            },
+            layout: None,
+            constraints: None,
+            style: figma_normalizer::NodeStyle {
+                opacity: 1.0,
+                corner_radius: None,
+                fills: vec![figma_normalizer::Paint {
+                    kind: figma_normalizer::PaintKind::Image,
+                    color: None,
+                    image_ref: Some("img-ref".to_string()),
+                }],
                 strokes: Vec::new(),
             },
             component: figma_normalizer::ComponentMetadata {

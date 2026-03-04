@@ -18,17 +18,12 @@
     {
       "stage": "build-spec",
       "output": "output/specs",
-      "artifact": "output/specs/ui_spec.json"
+      "artifact": "output/specs/ui_spec.ron"
     },
     {
       "stage": "export-assets",
       "output": "output/assets",
       "artifact": "output/assets/asset_manifest.json"
-    },
-    {
-      "stage": "report",
-      "output": "output/reports",
-      "artifact": "output/reports/review_report.json"
     }
   ]
 }

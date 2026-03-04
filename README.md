@@ -1,14 +1,12 @@
 # Forge
 
-Figma node tree to UI spec + LLM UI generation workspace in Rust 2024.
+Figma node tree to spec-first UI pipeline workspace in Rust 2024.
 
 This repository implements a deterministic, stage-based pipeline that produces:
 
 1. normalized/intermediate JSON artifacts
-2. `ui_spec.json` for LLM-oriented generation input
+2. `ui_spec.ron` (minimal structure-only spec tree)
 3. asset manifest metadata
-4. review report warnings and summaries
-5. optional LLM bundle and generated UI code artifacts
 
 ## Quickstart
 
@@ -62,11 +60,8 @@ Generated artifacts:
 | `fetch` | `output/raw` | `output/raw/fetch_snapshot.json` |
 | `normalize` | `output/normalized` | `output/normalized/normalized_document.json` |
 | `infer-layout` | `output/inferred` | `output/inferred/layout_inference.json` |
-| `build-spec` | `output/specs` | `output/specs/ui_spec.json` |
+| `build-spec` | `output/specs` | `output/specs/ui_spec.ron` |
 | `export-assets` | `output/assets` | `output/assets/asset_manifest.json` |
-| `report` | `output/reports` | `output/reports/review_report.json` |
-| `prepare-llm-bundle` (on demand) | `output/llm` | `output/llm/llm_bundle.json` |
-| `generate-ui` (on demand) | `output/generated-ui` | target-specific generated source files |
 
 ## CLI Commands
 
@@ -82,7 +77,6 @@ Run one stage:
 ```bash
 cargo run -p cli -- run-stage fetch
 cargo run -p cli -- run-stage normalize --output json
-cargo run -p cli -- run-stage prepare-llm-bundle
 ```
 
 Run fetch stage directly (fixture or live):
@@ -104,14 +98,6 @@ cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/des
 cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
-Prepare and run LLM UI generation:
-
-```bash
-cargo run -p cli -- run-stage prepare-llm-bundle
-export OPENAI_API_KEY="<YOUR_API_KEY>"
-cargo run -p cli -- generate-ui --target swiftui --model gpt-5
-```
-
 ## CLI Workflow Matrix
 
 | Goal | Command | Output Mode |
@@ -129,15 +115,12 @@ cargo run -p cli -- generate-ui --target swiftui --model gpt-5
 | Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
 | Run end-to-end pipeline from existing snapshot artifact | `cargo run -p cli -- generate --input snapshot --snapshot-path <path>` | text (default) |
 | Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
-| Build deterministic LLM bundle artifact | `cargo run -p cli -- run-stage prepare-llm-bundle` | text (default) |
-| Generate UI files via direct model call | `cargo run -p cli -- generate-ui --target <target> --model <model>` | text (default) |
 
 Notes:
 
-1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `export-assets`, `report`, and `prepare-llm-bundle`.
+1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, and `export-assets`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
-3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `export-assets`, and `report`.
-4. `generate-ui` requires `OPENAI_API_KEY` or `--api-key`.
+3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, and `export-assets`.
 
 ## Scope
 
@@ -145,8 +128,7 @@ In-scope right now:
 
 1. deterministic stage orchestration and artifact handoff
 2. fixture, live, and snapshot fetch input modes for `fetch` and `generate`
-3. warning/report surfacing for unsupported and low-confidence behavior
-4. fixture-backed end-to-end generate coverage
+3. fixture-backed end-to-end generate coverage
 
 Not yet in scope:
 
