@@ -823,7 +823,10 @@ mod tests {
         );
 
         let artifact_path = workspace_root.join("output/reports/review_report.json");
-        assert!(artifact_path.is_file(), "review report artifact should exist");
+        assert!(
+            artifact_path.is_file(),
+            "review report artifact should exist"
+        );
 
         let artifact =
             std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
@@ -879,9 +882,7 @@ mod tests {
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent).expect("artifact parent directory should exist");
         }
-        let encoded =
-            serde_json::to_string_pretty(artifact).expect("artifact should serialize");
-        std::fs::write(&output_path, format!("{encoded}\n"))
-            .expect("artifact should be written");
+        let encoded = serde_json::to_string_pretty(artifact).expect("artifact should serialize");
+        std::fs::write(&output_path, format!("{encoded}\n")).expect("artifact should be written");
     }
 }

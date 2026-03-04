@@ -455,7 +455,10 @@ mod tests {
             report.warnings[1].category,
             ReviewWarningCategory::LowConfidenceLayout
         );
-        assert_eq!(report.warnings[2].category, ReviewWarningCategory::DataLossRisk);
+        assert_eq!(
+            report.warnings[2].category,
+            ReviewWarningCategory::DataLossRisk
+        );
         assert_eq!(report.summary.total_warnings, 3);
     }
 
