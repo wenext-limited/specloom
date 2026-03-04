@@ -6,7 +6,8 @@ This repository implements a deterministic, stage-based pipeline that produces:
 
 1. normalized/intermediate JSON artifacts
 2. `ui_spec.ron` (minimal structure-only spec tree)
-3. asset manifest metadata
+3. agent context/search artifacts for lookup tooling
+4. asset manifest metadata
 
 ## Quickstart
 
@@ -61,6 +62,7 @@ Generated artifacts:
 | `normalize` | `output/normalized` | `output/normalized/normalized_document.json` |
 | `infer-layout` | `output/inferred` | `output/inferred/layout_inference.json` |
 | `build-spec` | `output/specs` | `output/specs/ui_spec.ron` |
+| `build-agent-context` | `output/agent` | `output/agent/agent_context.json`, `output/agent/search_index.json` |
 | `export-assets` | `output/assets` | `output/assets/asset_manifest.json` |
 
 ## CLI Commands
@@ -98,6 +100,14 @@ cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/des
 cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
+Run agent lookup tools (stateless run-and-consume):
+
+```bash
+cargo run -p cli -- agent-tool find-nodes --query "welcome back" --output json
+cargo run -p cli -- agent-tool get-node-info --node-id <NODE_ID>
+cargo run -p cli -- agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID>
+```
+
 ## CLI Workflow Matrix
 
 | Goal | Command | Output Mode |
@@ -115,12 +125,16 @@ cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNA
 | Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
 | Run end-to-end pipeline from existing snapshot artifact | `cargo run -p cli -- generate --input snapshot --snapshot-path <path>` | text (default) |
 | Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
+| Find candidate nodes via deterministic fuzzy lookup | `cargo run -p cli -- agent-tool find-nodes --query "<text>" --output json` | text/json |
+| Read indexed node details | `cargo run -p cli -- agent-tool get-node-info --node-id <id>` | text/json |
+| Fetch node screenshot directly from Figma images API | `cargo run -p cli -- agent-tool get-node-screenshot --file-key <file> --node-id <node>` | text/json |
 
 Notes:
 
-1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, and `export-assets`.
+1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-agent-context`, and `export-assets`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
-3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, and `export-assets`.
+3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-agent-context`, and `export-assets`.
+4. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## Scope
 

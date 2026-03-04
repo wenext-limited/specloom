@@ -153,6 +153,8 @@ const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.ron";
 const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
 const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
+const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
+const GENERATION_TRACE_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_trace.json";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
@@ -265,18 +267,64 @@ pub fn find_nodes_in_workspace(
     )?;
     let result = agent_context::rank_candidates(query, search_index.entries.as_slice(), top_k);
 
-    Ok(FindNodesResult {
-        status: map_search_status(result.status),
-        candidates: result
-            .matches
-            .into_iter()
-            .map(|candidate| FindNodeCandidate {
-                node_id: candidate.node_id,
-                score: candidate.score,
-                match_reasons: candidate.match_reasons,
-            })
-            .collect(),
-    })
+    let status = map_search_status(result.status);
+    let candidates = result
+        .matches
+        .into_iter()
+        .map(|candidate| FindNodeCandidate {
+            node_id: candidate.node_id,
+            score: candidate.score,
+            match_reasons: candidate.match_reasons,
+        })
+        .collect::<Vec<_>>();
+
+    let candidate_node_ids = candidates
+        .iter()
+        .map(|candidate| candidate.node_id.clone())
+        .collect::<Vec<_>>();
+    append_trace_event(
+        workspace_root,
+        "find_nodes",
+        find_nodes_status_label(&status),
+        query,
+        candidate_node_ids.clone(),
+    )?;
+
+    match status {
+        FindNodesStatus::NoMatch => {
+            append_warning(
+                workspace_root,
+                "NODE_NOT_FOUND",
+                query,
+                Vec::new(),
+                "continue_with_best_effort",
+                "No node candidate found for query",
+            )?;
+        }
+        FindNodesStatus::LowConfidence => {
+            append_warning(
+                workspace_root,
+                "LOW_CONFIDENCE_MATCH",
+                query,
+                candidate_node_ids.clone(),
+                "continue_with_best_effort",
+                "Top node candidate confidence is below threshold",
+            )?;
+        }
+        FindNodesStatus::Ambiguous => {
+            append_warning(
+                workspace_root,
+                "MULTIPLE_CANDIDATES",
+                query,
+                candidate_node_ids.clone(),
+                "continue_with_best_effort",
+                "Multiple close candidates found for query",
+            )?;
+        }
+        FindNodesStatus::Ok => {}
+    }
+
+    Ok(FindNodesResult { status, candidates })
 }
 
 pub fn get_node_info(node_id: &str) -> Result<NodeInfoResult, PipelineError> {
@@ -298,6 +346,13 @@ pub fn get_node_info_in_workspace(
         .into_iter()
         .find(|entry| entry.node_id == node_id);
     if let Some(entry) = maybe_entry {
+        append_trace_event(
+            workspace_root,
+            "get_node_info",
+            node_info_status_label(&NodeInfoStatus::Ok),
+            node_id,
+            vec![entry.node_id.clone()],
+        )?;
         return Ok(NodeInfoResult {
             status: NodeInfoStatus::Ok,
             node: Some(NodeInfo {
@@ -312,6 +367,22 @@ pub fn get_node_info_in_workspace(
             }),
         });
     }
+
+    append_trace_event(
+        workspace_root,
+        "get_node_info",
+        node_info_status_label(&NodeInfoStatus::NotFound),
+        node_id,
+        Vec::new(),
+    )?;
+    append_warning(
+        workspace_root,
+        "NODE_NOT_FOUND",
+        node_id,
+        Vec::new(),
+        "continue_with_best_effort",
+        "Node ID was not found in search index",
+    )?;
 
     Ok(NodeInfoResult {
         status: NodeInfoStatus::NotFound,
@@ -658,6 +729,89 @@ fn map_search_status(status: agent_context::SearchStatus) -> FindNodesStatus {
     }
 }
 
+fn find_nodes_status_label(status: &FindNodesStatus) -> &'static str {
+    match status {
+        FindNodesStatus::Ok => "ok",
+        FindNodesStatus::LowConfidence => "low_confidence",
+        FindNodesStatus::NoMatch => "no_match",
+        FindNodesStatus::Ambiguous => "ambiguous",
+    }
+}
+
+fn node_info_status_label(status: &NodeInfoStatus) -> &'static str {
+    match status {
+        NodeInfoStatus::Ok => "ok",
+        NodeInfoStatus::NotFound => "not_found",
+    }
+}
+
+fn append_warning(
+    workspace_root: &Path,
+    warning_type: &str,
+    node_query: &str,
+    candidate_node_ids: Vec<String>,
+    agent_action: &str,
+    message: &str,
+) -> Result<(), PipelineError> {
+    let warnings_path = workspace_root.join(GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH);
+    let mut warnings = if warnings_path.exists() {
+        let bytes = std::fs::read(warnings_path.as_path()).map_err(io_error)?;
+        serde_json::from_slice::<agent_context::GenerationWarnings>(bytes.as_slice())
+            .map_err(serialization_error)?
+    } else {
+        agent_context::GenerationWarnings {
+            version: "generation_warnings/1.0".to_string(),
+            warnings: Vec::new(),
+        }
+    };
+
+    let next_id = format!("warning-{}", warnings.warnings.len() + 1);
+    warnings.warnings.push(agent_context::GenerationWarning {
+        warning_id: next_id,
+        warning_type: warning_type.to_string(),
+        severity: "warning".to_string(),
+        node_query: node_query.to_string(),
+        candidate_node_ids,
+        agent_action: agent_action.to_string(),
+        message: message.to_string(),
+    });
+
+    let encoded = serde_json::to_vec_pretty(&warnings).map_err(serialization_error)?;
+    write_bytes(warnings_path.as_path(), encoded.as_slice())
+}
+
+fn append_trace_event(
+    workspace_root: &Path,
+    tool_name: &str,
+    status: &str,
+    query: &str,
+    selected_node_ids: Vec<String>,
+) -> Result<(), PipelineError> {
+    let trace_path = workspace_root.join(GENERATION_TRACE_ARTIFACT_RELATIVE_PATH);
+    let mut trace = if trace_path.exists() {
+        let bytes = std::fs::read(trace_path.as_path()).map_err(io_error)?;
+        serde_json::from_slice::<agent_context::GenerationTrace>(bytes.as_slice())
+            .map_err(serialization_error)?
+    } else {
+        agent_context::GenerationTrace {
+            version: "generation_trace/1.0".to_string(),
+            events: Vec::new(),
+        }
+    };
+
+    let next_id = format!("event-{}", trace.events.len() + 1);
+    trace.events.push(agent_context::TraceEvent {
+        event_id: next_id,
+        tool_name: tool_name.to_string(),
+        status: status.to_string(),
+        query: query.to_string(),
+        selected_node_ids,
+    });
+
+    let encoded = serde_json::to_vec_pretty(&trace).map_err(serialization_error)?;
+    write_bytes(trace_path.as_path(), encoded.as_slice())
+}
+
 fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
         workspace_root,
@@ -1001,6 +1155,37 @@ mod tests {
             .expect("node info lookup should succeed");
         assert_eq!(result.status, NodeInfoStatus::NotFound);
         assert!(result.node.is_none());
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn tool_lookup_no_match_emits_warning_artifact_entry() {
+        let workspace_root =
+            unique_test_workspace_root("tool_lookup_no_match_emits_warning_artifact_entry");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run third");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run fourth");
+        run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect("build-agent-context should run fifth");
+
+        let result = find_nodes_in_workspace(workspace_root.as_path(), "query-that-does-not-match", 5)
+            .expect("find_nodes should succeed");
+        assert_eq!(result.status, FindNodesStatus::NoMatch);
+
+        let warnings_path = workspace_root.join("output/reports/generation_warnings.json");
+        assert!(warnings_path.is_file());
+
+        let warnings_json =
+            std::fs::read_to_string(warnings_path).expect("warnings artifact should be readable");
+        let warnings: agent_context::GenerationWarnings =
+            serde_json::from_str(warnings_json.as_str()).expect("warnings artifact should decode");
+        assert!(warnings.warnings.iter().any(|warning| warning.warning_type == "NODE_NOT_FOUND"));
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
