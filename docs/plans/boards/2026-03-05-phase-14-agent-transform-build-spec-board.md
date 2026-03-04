@@ -3,7 +3,7 @@
 **Phase ID:** `P14`
 **Goal:** Remove `infer-layout` from the active path and make `build-spec` agent-driven via `transform_plan.json` with explicit `child_policy`.
 **Source Plan:** `docs/plans/2026-03-05-agent-transform-build-spec.md`
-**Last Updated:** `2026-03-05 04:16 CST`
+**Last Updated:** `2026-03-05 05:07 CST`
 
 ## Status Legend
 
@@ -22,7 +22,7 @@
 | [x] | P14-T5 | Apply agent transform plan mechanically to produce final `ui_spec.ron` | codex | P14-T4 | `crates/ui_spec/src/build.rs`, `crates/ui_spec/src/tests.rs` | `cargo test -p ui_spec` | `17ed37e` | Started 2026-03-05 04:43 CST; completed 2026-03-05 04:49 CST; verified `cargo test -p ui_spec`; no post-AI semantic re-inference in transform path |
 | [x] | P14-T6 | Wire agent transform-plan production in `build-spec` pipeline | codex | P14-T5 | `crates/orchestrator/src/lib.rs`, `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs` | `cargo test -p orchestrator && cargo test -p cli` | `142102a` | Started 2026-03-05 04:49 CST; completed 2026-03-05 04:57 CST; verified `cargo test -p orchestrator && cargo test -p cli`; persisted `output/specs/transform_plan.json` |
 | [x] | P14-T7 | Regenerate `agent_context.json` from final transformed spec and update docs | codex | P14-T6 | `crates/orchestrator/src/lib.rs`, `README.md`, `docs/agent-playbook.md` | `cargo test -p orchestrator && cargo test -p cli` | `9d7cf06` | Started 2026-03-05 04:58 CST; completed 2026-03-05 05:04 CST; verified `cargo test -p orchestrator && cargo test -p cli`; documented end-to-end artifact order |
-| [x] | P14-T8 | Phase verification and merged-main close-out | codex | P14-T7 | `docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | `cargo check --workspace && cargo test --workspace` | `9d7cf06` | Started 2026-03-05 05:05 CST; completed 2026-03-05 05:06 CST; verified on merged `main` with `cargo check --workspace && cargo test --workspace` |
+| [x] | P14-T8 | Phase verification and merged-main close-out | codex | P14-T7 | `docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | `cargo check --workspace && cargo test --workspace` | `f43f0bd` | Started 2026-03-05 05:05 CST; completed 2026-03-05 05:06 CST; verified on merged `main` with `cargo check --workspace && cargo test --workspace` |
 
 ## Parallelization Rules
 
