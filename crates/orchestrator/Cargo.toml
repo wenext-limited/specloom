@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+asset_pipeline = { path = "../asset_pipeline" }
 figma_client = { path = "../figma_client" }
 figma_normalizer = { path = "../figma_normalizer" }
 layout_infer = { path = "../layout_infer" }

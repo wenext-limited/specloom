@@ -42,6 +42,7 @@ const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_do
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.json";
 const SWIFT_ARTIFACT_OUTPUT_DIR: &str = "output/swift";
+const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -116,6 +117,7 @@ pub fn run_stage_in_workspace(
         "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
         "gen-swiftui" => Some(run_gen_swiftui_stage(workspace_root)?),
+        "export-assets" => Some(run_export_assets_stage(workspace_root)?),
         _ => None,
     };
 
@@ -249,6 +251,40 @@ fn run_gen_swiftui_stage(workspace_root: &Path) -> Result<String, PipelineError>
     std::fs::write(&output_path, rendered).map_err(io_error)?;
 
     Ok(relative_path)
+}
+
+fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
+    if !normalized_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+    let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
+    if !spec_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            SPEC_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let normalized_artifact = std::fs::read_to_string(&normalized_path).map_err(io_error)?;
+    let normalized: figma_normalizer::NormalizationOutput =
+        serde_json::from_str(&normalized_artifact).map_err(serialization_error)?;
+
+    let spec_artifact = std::fs::read_to_string(&spec_path).map_err(io_error)?;
+    let spec: ui_spec::UiSpec =
+        serde_json::from_str(&spec_artifact).map_err(serialization_error)?;
+
+    let manifest = asset_pipeline::build_asset_manifest(&normalized, &spec);
+
+    let output_path = workspace_root.join(ASSET_MANIFEST_RELATIVE_PATH);
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let encoded = serde_json::to_string_pretty(&manifest).map_err(serialization_error)?;
+    std::fs::write(&output_path, format!("{encoded}\n")).map_err(io_error)?;
+
+    Ok(ASSET_MANIFEST_RELATIVE_PATH.to_string())
 }
 
 fn io_error(err: std::io::Error) -> PipelineError {
@@ -519,6 +555,49 @@ mod tests {
             std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
         assert!(artifact.contains("import SwiftUI"));
         assert!(artifact.contains("struct FixtureRootView: View"));
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_export_assets_writes_asset_manifest_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_export_assets_writes_asset_manifest_artifact");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run first");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run first");
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run first");
+        let result = run_stage_in_workspace("export-assets", workspace_root.as_path())
+            .expect("export-assets should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "export-assets",
+                output_dir: "output/assets",
+                artifact_path: Some("output/assets/asset_manifest.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/assets/asset_manifest.json");
+        assert!(
+            artifact_path.is_file(),
+            "asset manifest artifact should exist"
+        );
+
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let manifest: asset_pipeline::AssetManifest =
+            serde_json::from_str(&artifact).expect("artifact should be valid manifest json");
+        assert_eq!(
+            manifest.manifest_version,
+            asset_pipeline::ASSET_MANIFEST_VERSION
+        );
+        assert_eq!(manifest.generation.source_file_key, "fixture-file-key");
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }

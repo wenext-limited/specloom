@@ -56,8 +56,10 @@ dependencies = [
 name = "asset_pipeline"
 version = "0.1.0"
 dependencies = [
+ "figma_normalizer",
  "serde",
  "serde_json",
+ "ui_spec",
 ]
 
 [[package]]
@@ -176,6 +178,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "orchestrator"
 version = "0.1.0"
 dependencies = [
+ "asset_pipeline",
  "figma_client",
  "figma_normalizer",
  "layout_infer",

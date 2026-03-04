@@ -21,6 +21,79 @@ impl Default for AssetManifest {
     }
 }
 
+pub fn build_asset_manifest(
+    normalized: &figma_normalizer::NormalizationOutput,
+    spec: &ui_spec::UiSpec,
+) -> AssetManifest {
+    let mut assets = Vec::new();
+    let mut warnings = Vec::new();
+
+    for node in &normalized.document.nodes {
+        let image_fills = node
+            .style
+            .fills
+            .iter()
+            .filter(|fill| fill.kind == figma_normalizer::PaintKind::Image)
+            .collect::<Vec<_>>();
+
+        for fill in image_fills {
+            match fill.image_ref.as_ref() {
+                Some(image_ref) => assets.push(AssetEntry {
+                    node_id: node.id.clone(),
+                    image_ref: Some(image_ref.clone()),
+                    hashed_output_filename: format!(
+                        "img_{}.png",
+                        sanitize_identifier(node.id.as_str())
+                    ),
+                    format: AssetFormat::Png,
+                    width_px: node.bounds.w.max(0.0).round() as u32,
+                    height_px: node.bounds.h.max(0.0).round() as u32,
+                    dedupe_key: format!("node-{}", sanitize_identifier(node.id.as_str())),
+                }),
+                None => warnings.push(AssetExportWarning {
+                    code: "MISSING_IMAGE_REF".to_string(),
+                    message: "Image fill had no image_ref and was skipped.".to_string(),
+                    node_id: Some(node.id.clone()),
+                    fallback_applied: false,
+                }),
+            }
+        }
+    }
+
+    assets.sort_by(|left, right| {
+        left.node_id
+            .cmp(&right.node_id)
+            .then_with(|| left.image_ref.cmp(&right.image_ref))
+    });
+
+    AssetManifest {
+        manifest_version: ASSET_MANIFEST_VERSION.to_string(),
+        generation: GenerationMetadata {
+            source_file_key: normalized.document.source.file_key.clone(),
+            generator_version: if spec.source.generator_version.is_empty() {
+                "0.1.0".to_string()
+            } else {
+                spec.source.generator_version.clone()
+            },
+        },
+        assets,
+        warnings,
+    }
+}
+
+fn sanitize_identifier(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerationMetadata {
     pub source_file_key: String,
@@ -159,6 +232,84 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn build_asset_manifest_extracts_image_fill_assets_deterministically() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    image_node("10:1", "figma-image-ref-1", 240.0, 64.0),
+                    image_node("12:3", "figma-image-ref-2", 128.0, 128.0),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let spec = ui_spec::UiSpec {
+            source: ui_spec::UiSpecSource {
+                file_key: "abc123".to_string(),
+                root_node_id: "1:1".to_string(),
+                generator_version: "0.1.0".to_string(),
+            },
+            ..ui_spec::UiSpec::default()
+        };
+
+        let manifest = super::build_asset_manifest(&normalized, &spec);
+        assert_eq!(manifest.manifest_version, super::ASSET_MANIFEST_VERSION);
+        assert_eq!(manifest.generation.source_file_key, "abc123");
+        assert_eq!(manifest.generation.generator_version, "0.1.0");
+        assert_eq!(manifest.assets.len(), 2);
+        assert_eq!(manifest.assets[0].node_id, "10:1");
+        assert_eq!(manifest.assets[1].node_id, "12:3");
+        assert_eq!(manifest.assets[0].format, super::AssetFormat::Png);
+        assert_eq!(manifest.assets[0].width_px, 240);
+        assert_eq!(manifest.assets[0].height_px, 64);
+    }
+
+    fn image_node(
+        id: &str,
+        image_ref: &str,
+        width: f32,
+        height: f32,
+    ) -> figma_normalizer::NormalizedNode {
+        figma_normalizer::NormalizedNode {
+            id: id.to_string(),
+            parent_id: Some("1:1".to_string()),
+            name: "Image".to_string(),
+            kind: figma_normalizer::NodeKind::Rectangle,
+            visible: true,
+            bounds: figma_normalizer::Bounds {
+                x: 0.0,
+                y: 0.0,
+                w: width,
+                h: height,
+            },
+            layout: None,
+            constraints: None,
+            style: figma_normalizer::NodeStyle {
+                opacity: 1.0,
+                corner_radius: None,
+                fills: vec![figma_normalizer::Paint {
+                    kind: figma_normalizer::PaintKind::Image,
+                    color: None,
+                    image_ref: Some(image_ref.to_string()),
+                }],
+                strokes: Vec::new(),
+            },
+            component: figma_normalizer::ComponentMetadata {
+                component_id: None,
+                component_set_id: None,
+                instance_of: None,
+                variant_properties: Vec::new(),
+            },
+            children: Vec::new(),
+        }
     }
 
     fn sample_manifest() -> AssetManifest {
