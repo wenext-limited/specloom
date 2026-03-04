@@ -61,3 +61,46 @@ fn run_stage_subcommand_rejects_unknown_stage() {
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
 }
+
+#[test]
+fn stages_subcommand_supports_json_output_mode() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["stages", "--output", "json"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(
+        text.trim(),
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"gen-swiftui","output":"output/swift"},{"stage":"export-assets","output":"output/assets"},{"stage":"report","output":"output/reports"}]}"#
+    );
+}
+
+#[test]
+fn run_stage_subcommand_supports_json_output_mode() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "normalize", "--output", "json"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(
+        text.trim(),
+        r#"{"stage":"normalize","output":"output/normalized"}"#
+    );
+}
+
+#[test]
+fn run_stage_subcommand_rejects_unknown_stage_in_json_mode() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "not-a-stage", "--output", "json"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("unknown stage"));
+    assert!(stderr.contains("not-a-stage"));
+}
