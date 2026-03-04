@@ -90,6 +90,55 @@ impl LiveFetchRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveScreenshotRequest {
+    pub fetch: FetchNodesRequest,
+    pub figma_token: String,
+    pub api_base_url: Option<String>,
+}
+
+impl LiveScreenshotRequest {
+    pub fn new(
+        file_key: String,
+        node_id: String,
+        figma_token: String,
+        api_base_url: Option<String>,
+    ) -> Result<Self, FetchClientError> {
+        let fetch = FetchNodesRequest::new(file_key, node_id)?;
+
+        let figma_token = figma_token.trim().to_string();
+        if figma_token.is_empty() {
+            return Err(FetchClientError::InvalidRequest(
+                "figma_token is required for screenshot fetch".to_string(),
+            ));
+        }
+
+        let api_base_url = api_base_url
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        Ok(Self {
+            fetch,
+            figma_token,
+            api_base_url,
+        })
+    }
+
+    pub fn api_base_url(&self) -> &str {
+        self.api_base_url
+            .as_deref()
+            .unwrap_or(DEFAULT_FIGMA_API_BASE_URL)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeScreenshot {
+    pub node_id: String,
+    pub image_url: String,
+    pub format: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawSnapshotSource {
@@ -126,6 +175,16 @@ pub fn fetch_snapshot_live(
     request: &LiveFetchRequest,
 ) -> Result<RawFigmaSnapshot, FetchClientError> {
     fetch_snapshot_live_with_base_url(
+        &request.fetch,
+        request.figma_token.as_str(),
+        request.api_base_url(),
+    )
+}
+
+pub fn fetch_node_screenshot_live(
+    request: &LiveScreenshotRequest,
+) -> Result<NodeScreenshot, FetchClientError> {
+    fetch_node_screenshot_live_with_base_url(
         &request.fetch,
         request.figma_token.as_str(),
         request.api_base_url(),
@@ -183,6 +242,60 @@ pub fn fetch_snapshot_live_with_base_url(
     build_snapshot_from_live_nodes_payload(request, payload)
 }
 
+pub fn fetch_node_screenshot_live_with_base_url(
+    request: &FetchNodesRequest,
+    figma_token: &str,
+    api_base_url: &str,
+) -> Result<NodeScreenshot, FetchClientError> {
+    let figma_token = figma_token.trim();
+    if figma_token.is_empty() {
+        return Err(FetchClientError::InvalidRequest(
+            "figma_token is required for screenshot fetch".to_string(),
+        ));
+    }
+    let api_base_url = api_base_url.trim();
+    if api_base_url.is_empty() {
+        return Err(FetchClientError::InvalidRequest(
+            "api_base_url is required for screenshot fetch".to_string(),
+        ));
+    }
+
+    let api_url = format!(
+        "{}/v1/images/{}",
+        api_base_url.trim_end_matches('/'),
+        request.file_key
+    );
+
+    let response = reqwest::blocking::Client::new()
+        .get(api_url)
+        .header("X-Figma-Token", figma_token)
+        .query(&[
+            ("ids", request.node_id.as_str()),
+            ("format", "png"),
+        ])
+        .send()
+        .map_err(|err| FetchClientError::HttpTransport(err.to_string()))?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(FetchClientError::Unauthorized);
+    }
+    if !status.is_success() {
+        let body = response
+            .text()
+            .unwrap_or_else(|_| "response body unavailable".to_string());
+        return Err(FetchClientError::HttpStatus {
+            status: status.as_u16(),
+            message: body,
+        });
+    }
+
+    let payload = response
+        .json::<Value>()
+        .map_err(|err| FetchClientError::InvalidApiResponse(err.to_string()))?;
+    build_node_screenshot_from_payload(request, payload)
+}
+
 fn build_snapshot_from_live_nodes_payload(
     request: &FetchNodesRequest,
     payload: Value,
@@ -211,6 +324,29 @@ fn build_snapshot_from_live_nodes_payload(
         payload: json!({
             "document": document
         }),
+    })
+}
+
+fn build_node_screenshot_from_payload(
+    request: &FetchNodesRequest,
+    payload: Value,
+) -> Result<NodeScreenshot, FetchClientError> {
+    let image_url = payload
+        .get("images")
+        .and_then(Value::as_object)
+        .and_then(|images| images.get(request.node_id.as_str()))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            FetchClientError::InvalidApiResponse(format!(
+                "missing images.{} in figma response",
+                request.node_id
+            ))
+        })?;
+
+    Ok(NodeScreenshot {
+        node_id: request.node_id.clone(),
+        image_url: image_url.to_string(),
+        format: "png".to_string(),
     })
 }
 
@@ -503,6 +639,67 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "figma api returned non-success status 404: No file"
+        );
+    }
+
+    #[test]
+    fn fetch_node_screenshot_live_with_base_url_requests_images_endpoint() {
+        let (base_url, request_rx, server_thread) = match start_single_response_server(
+            "200 OK",
+            r#"{
+                "images": {
+                    "123:456": "https://cdn.example.com/image.png"
+                }
+            }"#,
+        ) {
+            Ok(server) => server,
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                eprintln!("skipping live transport test: local socket bind not permitted");
+                return;
+            }
+            Err(err) => panic!("mock server should bind: {err}"),
+        };
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+
+        let screenshot =
+            super::fetch_node_screenshot_live_with_base_url(&request, "secret-token", &base_url)
+                .expect("screenshot fetch should succeed");
+        let raw_request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("mock server should receive request");
+        server_thread.join().expect("server thread should finish");
+
+        let lower_request = raw_request.to_ascii_lowercase();
+        assert!(raw_request.starts_with("GET /v1/images/abc123?ids=123%3A456&format=png HTTP/1.1"));
+        assert!(lower_request.contains("x-figma-token: secret-token"));
+        assert_eq!(screenshot.node_id, "123:456");
+        assert_eq!(screenshot.image_url, "https://cdn.example.com/image.png");
+        assert_eq!(screenshot.format, "png");
+    }
+
+    #[test]
+    fn fetch_node_screenshot_live_with_base_url_reports_missing_image_ref() {
+        let (base_url, _request_rx, server_thread) =
+            match start_single_response_server("200 OK", r#"{"images":{}}"#) {
+                Ok(server) => server,
+                Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                    eprintln!("skipping live transport test: local socket bind not permitted");
+                    return;
+                }
+                Err(err) => panic!("mock server should bind: {err}"),
+            };
+        let request = super::FetchNodesRequest::new("abc123".to_string(), "123:456".to_string())
+            .expect("request should be valid");
+
+        let err =
+            super::fetch_node_screenshot_live_with_base_url(&request, "secret-token", &base_url)
+                .expect_err("missing image ref should fail");
+        server_thread.join().expect("server thread should finish");
+
+        assert_eq!(
+            err.to_string(),
+            "invalid figma api response: missing images.123:456 in figma response"
         );
     }
 
