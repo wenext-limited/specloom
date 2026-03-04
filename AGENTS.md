@@ -52,6 +52,12 @@ Key docs:
 4. Start the next phase from a new branch based on the latest `main` (not from the previous phase branch).
 5. Commit after each completed task within a phase.
 
+## Execution Autonomy Rule
+
+1. When a phase is active, always start the next dependency-ready task immediately after finishing the current one.
+2. Do not ask the user whether to continue to the next task within the same phase unless a blocker requires a decision.
+3. Ask the user for direction only after the full phase is completed and verification has passed.
+
 ## Coding Rules
 
 1. Use Rust 2024 (`edition = "2024"`).
