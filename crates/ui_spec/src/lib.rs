@@ -101,8 +101,6 @@ pub enum UiSpecBuildError {
     MissingNormalizedRootNode(String),
     #[error("missing normalized node: {0}")]
     MissingNormalizedNode(String),
-    #[error("unsupported normalized node kind `{kind}` at node `{node_id}`")]
-    UnsupportedNormalizedNodeKind { node_id: String, kind: String },
 }
 
 pub fn build_ui_spec(
@@ -133,13 +131,19 @@ fn build_ui_spec_node(
         .copied()
         .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(node_id.to_string()))?;
 
-    let children = node
-        .children
-        .iter()
-        .map(|child_id| build_ui_spec_node(child_id.as_str(), nodes_by_id))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut children = Vec::new();
+    for child_id in &node.children {
+        let child = nodes_by_id
+            .get(child_id.as_str())
+            .copied()
+            .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(child_id.clone()))?;
+        if !child.visible {
+            continue;
+        }
+        children.push(build_ui_spec_node(child_id.as_str(), nodes_by_id)?);
+    }
 
-    let node_type = map_node_type(node)?;
+    let node_type = map_node_type(node);
     Ok(match node_type {
         NodeType::Container => UiSpec::Container {
             id: node.id.clone(),
@@ -164,14 +168,14 @@ fn build_ui_spec_node(
     })
 }
 
-fn map_node_type(node: &figma_normalizer::NormalizedNode) -> Result<NodeType, UiSpecBuildError> {
+fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
     match node.kind {
         figma_normalizer::NodeKind::Frame
         | figma_normalizer::NodeKind::Group
         | figma_normalizer::NodeKind::Component
         | figma_normalizer::NodeKind::Instance
-        | figma_normalizer::NodeKind::ComponentSet => Ok(NodeType::Container),
-        figma_normalizer::NodeKind::Text => Ok(NodeType::Text),
+        | figma_normalizer::NodeKind::ComponentSet => NodeType::Container,
+        figma_normalizer::NodeKind::Text => NodeType::Text,
         figma_normalizer::NodeKind::Rectangle
         | figma_normalizer::NodeKind::Ellipse
         | figma_normalizer::NodeKind::Vector => {
@@ -181,16 +185,17 @@ fn map_node_type(node: &figma_normalizer::NormalizedNode) -> Result<NodeType, Ui
                 .iter()
                 .any(|fill| fill.kind == figma_normalizer::PaintKind::Image);
             if has_image_fill {
-                Ok(NodeType::Image)
+                NodeType::Image
             } else {
-                Ok(NodeType::Vector)
+                NodeType::Vector
             }
         }
         figma_normalizer::NodeKind::Unknown => {
-            Err(UiSpecBuildError::UnsupportedNormalizedNodeKind {
-                node_id: node.id.clone(),
-                kind: "unknown".to_string(),
-            })
+            if node.children.is_empty() {
+                NodeType::Vector
+            } else {
+                NodeType::Container
+            }
         }
     }
 }
@@ -310,6 +315,46 @@ mod tests {
     }
 
     #[test]
+    fn build_ui_spec_omits_invisible_nodes() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    container_node(
+                        "1:1",
+                        vec!["2:1".to_string(), "3:1".to_string(), "4:1".to_string()],
+                    ),
+                    text_node("2:1"),
+                    hidden_text_node("3:1"),
+                    hidden_container_node("4:1", vec!["5:1".to_string()]),
+                    text_node("5:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        let child_ids = spec
+            .children()
+            .iter()
+            .map(|child| child.id().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(child_ids, vec!["2:1".to_string()]);
+    }
+
+    #[test]
     fn build_ui_spec_rejects_missing_root_node() {
         let normalized = figma_normalizer::NormalizationOutput {
             document: figma_normalizer::NormalizedDocument {
@@ -338,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn build_ui_spec_rejects_unknown_node_kind() {
+    fn build_ui_spec_maps_unknown_leaf_node_kind_to_vector() {
         let normalized = figma_normalizer::NormalizationOutput {
             document: figma_normalizer::NormalizedDocument {
                 schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
@@ -386,11 +431,65 @@ mod tests {
             decisions: Vec::new(),
         };
 
-        let err = build_ui_spec(&normalized, &inferred).expect_err("build should fail");
-        assert!(
-            err.to_string()
-                .contains("unsupported normalized node kind `unknown` at node `1:1`")
-        );
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.node_type(), NodeType::Vector);
+    }
+
+    #[test]
+    fn build_ui_spec_maps_unknown_node_with_children_to_container() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    figma_normalizer::NormalizedNode {
+                        id: "1:1".to_string(),
+                        parent_id: None,
+                        name: "Unknown Parent".to_string(),
+                        kind: figma_normalizer::NodeKind::Unknown,
+                        visible: true,
+                        bounds: figma_normalizer::Bounds {
+                            x: 0.0,
+                            y: 0.0,
+                            w: 10.0,
+                            h: 10.0,
+                        },
+                        layout: None,
+                        constraints: None,
+                        style: figma_normalizer::NodeStyle {
+                            opacity: 1.0,
+                            corner_radius: None,
+                            fills: Vec::new(),
+                            strokes: Vec::new(),
+                        },
+                        component: figma_normalizer::ComponentMetadata {
+                            component_id: None,
+                            component_set_id: None,
+                            instance_of: None,
+                            variant_properties: Vec::new(),
+                        },
+                        passthrough_fields: std::collections::BTreeMap::new(),
+                        children: vec!["2:1".to_string()],
+                    },
+                    text_node("2:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.node_type(), NodeType::Container);
+        assert_eq!(spec.children().len(), 1);
     }
 
     fn container_node(id: &str, children: Vec<String>) -> figma_normalizer::NormalizedNode {
@@ -534,5 +633,17 @@ mod tests {
             passthrough_fields: std::collections::BTreeMap::new(),
             children: Vec::new(),
         }
+    }
+
+    fn hidden_text_node(id: &str) -> figma_normalizer::NormalizedNode {
+        let mut node = text_node(id);
+        node.visible = false;
+        node
+    }
+
+    fn hidden_container_node(id: &str, children: Vec<String>) -> figma_normalizer::NormalizedNode {
+        let mut node = container_node(id, children);
+        node.visible = false;
+        node
     }
 }

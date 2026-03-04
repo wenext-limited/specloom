@@ -99,10 +99,6 @@ fn normalize_node(
         children: Vec::new(),
     });
 
-    if matches!(nodes[node_index].kind, NodeKind::Instance) {
-        return Ok(id);
-    }
-
     let children = parse_children(node.get("children"))?;
     let mut child_ids = Vec::new();
     for child in children {
@@ -611,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn normalize_snapshot_treats_instance_as_leaf_unit() {
+    fn normalize_snapshot_traverses_instance_children() {
         let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
             .expect("request should be valid");
         let snapshot = figma_client::fetch_snapshot_from_fixture(
@@ -656,11 +652,12 @@ mod tests {
                 .iter()
                 .map(|node| node.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["1:1", "2:1"]
+            vec!["1:1", "2:1", "3:1"]
         );
         assert_eq!(output.document.nodes[0].children, vec!["2:1".to_string()]);
         assert_eq!(output.document.nodes[1].kind, NodeKind::Instance);
-        assert_eq!(output.document.nodes[1].children, Vec::<String>::new());
+        assert_eq!(output.document.nodes[1].children, vec!["3:1".to_string()]);
+        assert_eq!(output.document.nodes[2].parent_id, Some("2:1".to_string()));
     }
 
     #[test]
