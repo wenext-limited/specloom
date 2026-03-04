@@ -482,6 +482,7 @@ mod tests {
                 instance_of: None,
                 variant_properties: Vec::new(),
             },
+            passthrough_fields: std::collections::BTreeMap::new(),
             children,
         }
     }
@@ -513,6 +514,7 @@ mod tests {
                 instance_of: None,
                 variant_properties: Vec::new(),
             },
+            passthrough_fields: std::collections::BTreeMap::new(),
             children: Vec::new(),
         }
     }

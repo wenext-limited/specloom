@@ -736,6 +736,7 @@ mod tests {
             constraints: None,
             style: default_style(),
             component: default_component(),
+            passthrough_fields: std::collections::BTreeMap::new(),
             children,
         }
     }
@@ -762,6 +763,7 @@ mod tests {
             constraints: None,
             style: default_style(),
             component: default_component(),
+            passthrough_fields: std::collections::BTreeMap::new(),
             children: Vec::new(),
         }
     }

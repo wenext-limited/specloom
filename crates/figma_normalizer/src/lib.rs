@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 
 pub const NORMALIZED_SCHEMA_VERSION: &str = "1.0";
@@ -76,8 +78,7 @@ fn normalize_node(
     );
     let visible = node.get("visible").and_then(Value::as_bool).unwrap_or(true);
     let bounds = parse_bounds(node.get("absoluteBoundingBox"))?;
-
-    append_unsupported_field_warnings(node, id.as_str(), warnings);
+    let passthrough_fields = collect_passthrough_fields(node);
 
     let node_index = nodes.len();
     nodes.push(NormalizedNode {
@@ -91,6 +92,7 @@ fn normalize_node(
         constraints: None,
         style: default_style(),
         component: default_component(),
+        passthrough_fields,
         children: Vec::new(),
     });
 
@@ -193,11 +195,7 @@ fn parse_children(children_value: Option<&Value>) -> Result<Vec<&Value>, Normali
         })
 }
 
-fn append_unsupported_field_warnings(
-    node: &serde_json::Map<String, Value>,
-    node_id: &str,
-    warnings: &mut Vec<NormalizationWarning>,
-) {
+fn collect_passthrough_fields(node: &serde_json::Map<String, Value>) -> BTreeMap<String, Value> {
     const SUPPORTED_FIELDS: [&str; 6] = [
         "id",
         "name",
@@ -207,20 +205,10 @@ fn append_unsupported_field_warnings(
         "children",
     ];
 
-    let mut unsupported_fields = node
-        .keys()
-        .filter(|field| !SUPPORTED_FIELDS.contains(&field.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    unsupported_fields.sort();
-
-    for field in unsupported_fields {
-        warnings.push(NormalizationWarning {
-            code: "UNSUPPORTED_NODE_FIELD".to_string(),
-            message: format!("unsupported field `{field}` ignored during normalization"),
-            node_id: Some(node_id.to_string()),
-        });
-    }
+    node.iter()
+        .filter(|(field, _)| !SUPPORTED_FIELDS.contains(&field.as_str()))
+        .map(|(field, value)| (field.clone(), value.clone()))
+        .collect()
 }
 
 fn default_style() -> NodeStyle {
@@ -287,6 +275,7 @@ pub struct NormalizedNode {
     pub constraints: Option<LayoutConstraints>,
     pub style: NodeStyle,
     pub component: ComponentMetadata,
+    pub passthrough_fields: BTreeMap<String, Value>,
     pub children: Vec<String>,
 }
 
@@ -536,10 +525,12 @@ mod tests {
         );
         assert_eq!(output.document.nodes[0].children, vec!["2:1".to_string()]);
         assert_eq!(output.document.nodes[1].children, Vec::<String>::new());
+        assert!(output.document.nodes[0].passthrough_fields.is_empty());
+        assert!(output.document.nodes[1].passthrough_fields.is_empty());
     }
 
     #[test]
-    fn normalize_snapshot_emits_warning_for_unsupported_fields() {
+    fn normalize_snapshot_preserves_unsupported_fields_in_passthrough() {
         let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
             .expect("request should be valid");
         let snapshot = figma_client::fetch_snapshot_from_fixture(
@@ -559,10 +550,11 @@ mod tests {
         .expect("fixture should parse");
 
         let output = super::normalize_snapshot(&snapshot).expect("snapshot should normalize");
-        assert_eq!(output.warnings.len(), 1);
-        assert_eq!(output.warnings[0].code, "UNSUPPORTED_NODE_FIELD");
-        assert_eq!(output.warnings[0].node_id.as_deref(), Some("1:1"));
-        assert!(output.warnings[0].message.contains("blendMode"));
+        assert!(output.warnings.is_empty());
+        assert_eq!(
+            output.document.nodes[0].passthrough_fields.get("blendMode"),
+            Some(&Value::String("MULTIPLY".to_string()))
+        );
     }
 
     #[test]
@@ -648,6 +640,7 @@ mod tests {
                             value: "default".to_string(),
                         }],
                     },
+                    passthrough_fields: BTreeMap::new(),
                     children: vec!["2:1".to_string(), "3:1".to_string()],
                 },
                 NormalizedNode {
@@ -688,6 +681,7 @@ mod tests {
                         instance_of: None,
                         variant_properties: Vec::new(),
                     },
+                    passthrough_fields: BTreeMap::new(),
                     children: Vec::new(),
                 },
                 NormalizedNode {
@@ -731,6 +725,7 @@ mod tests {
                             value: "enabled".to_string(),
                         }],
                     },
+                    passthrough_fields: BTreeMap::new(),
                     children: Vec::new(),
                 },
             ],
