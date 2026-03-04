@@ -16,7 +16,7 @@
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [x] | P9-T1 | Implement review report stage aggregation | codex | - | `crates/review_report/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p review_report && cargo test -p orchestrator` | `cd1ed7b` | Started 2026-03-04 15:44 CST; report stage now aggregates normalization/inference/asset warnings into deterministic review artifact |
-| [x] | P9-T2 | Add orchestrator run-all API | codex | P9-T1 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `<pending>` | Started 2026-03-04 15:49 CST; added sequential run-all execution with ordered results and stage-error boundaries |
+| [x] | P9-T2 | Add orchestrator run-all API | codex | P9-T1 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `0998183` | Started 2026-03-04 15:49 CST; added sequential run-all execution with ordered results and stage-error boundaries |
 | [ ] | P9-T3 | Add CLI generate command | unassigned | P9-T2 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | - | Deterministic text/json outputs and exit codes |
 | [ ] | P9-T4 | Add fixture e2e generate test | unassigned | P9-T3 | `crates/cli/tests/fixtures/`, `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | - | Assert all output artifact families are created |
 | [ ] | P9-T5 | Add deterministic rerun assertions | unassigned | P9-T4 | `crates/cli/tests/e2e_generate.rs` | `cargo test -p cli --test e2e_generate` | - | Byte-equal outputs across repeated runs |
