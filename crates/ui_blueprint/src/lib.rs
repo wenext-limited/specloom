@@ -37,6 +37,18 @@ impl Default for UiBlueprint {
     }
 }
 
+impl UiBlueprint {
+    pub fn to_yaml_string(&self) -> Result<String, BlueprintError> {
+        serde_yaml::to_string(self).map_err(BlueprintError::SerializeYaml)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlueprintError {
+    #[error("yaml serialization error: {0}")]
+    SerializeYaml(serde_yaml::Error),
+}
+
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlueprintDocument {
@@ -349,6 +361,16 @@ mod tests {
     }
 
     #[test]
+    fn to_yaml_is_stable_for_identical_blueprint() {
+        let blueprint = sample_blueprint();
+        let first = blueprint.to_yaml_string().unwrap();
+        let second = blueprint.to_yaml_string().unwrap();
+
+        assert_eq!(first, second);
+        assert!(first.contains("version: ui_blueprint/1.0"));
+    }
+
+    #[test]
     fn build_blueprint_from_ui_spec_maps_root_layout_and_warnings() {
         let spec = ui_spec::UiSpec {
             source: ui_spec::UiSpecSource {
@@ -416,5 +438,43 @@ mod tests {
                 node_id: Some("123:456".to_string()),
             }]
         );
+    }
+
+    fn sample_blueprint() -> UiBlueprint {
+        UiBlueprint {
+            version: UI_BLUEPRINT_VERSION.to_string(),
+            document: BlueprintDocument {
+                file_key: "abc123".to_string(),
+                root_node_id: "123:456".to_string(),
+                name: "Login".to_string(),
+                viewport: Some(BlueprintViewport {
+                    width: 390.0,
+                    height: 844.0,
+                }),
+            },
+            screens: vec![BlueprintScreen {
+                id: "screen/login".to_string(),
+                name: "Login".to_string(),
+                root: BlueprintNode {
+                    id: "node/root".to_string(),
+                    name: "Root".to_string(),
+                    role: BlueprintNodeRole::Container,
+                    layout: BlueprintLayout {
+                        kind: BlueprintLayoutKind::StackV,
+                        gap: Some(16.0),
+                    },
+                    style: BlueprintStyle::default(),
+                    content: None,
+                    semantics: Vec::new(),
+                    children: Vec::new(),
+                },
+            }],
+            warnings: vec![BlueprintWarning {
+                code: "LOW_CONFIDENCE_LAYOUT".to_string(),
+                message: "layout strategy inferred with low confidence".to_string(),
+                node_id: Some("123:789".to_string()),
+            }],
+            ..UiBlueprint::default()
+        }
     }
 }
