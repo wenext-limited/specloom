@@ -37,6 +37,40 @@ enum Command {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
+    AgentTool {
+        #[command(subcommand)]
+        tool: AgentToolCommand,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum AgentToolCommand {
+    FindNodes {
+        #[arg(long)]
+        query: String,
+        #[arg(long, default_value_t = 5)]
+        top_k: usize,
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
+    GetNodeInfo {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
+    GetNodeScreenshot {
+        #[arg(long)]
+        file_key: String,
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        figma_token: Option<String>,
+        #[arg(long, hide = true)]
+        figma_api_base_url: Option<String>,
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -181,6 +215,109 @@ fn main() {
                     Err(err) => emit_error_and_exit(err, output),
                 }
             }
+            Command::AgentTool { tool } => match tool {
+                AgentToolCommand::FindNodes {
+                    query,
+                    top_k,
+                    output,
+                } => match orchestrator::find_nodes(query.as_str(), top_k) {
+                    Ok(result) => match output {
+                        OutputMode::Text => {
+                            println!(
+                                "status={} query={} candidates={}",
+                                find_nodes_status_label(&result.status),
+                                query,
+                                result.candidates.len()
+                            );
+                            for candidate in result.candidates {
+                                let reasons = candidate.match_reasons.join(",");
+                                println!(
+                                    "node_id={} score={:.3} reasons={}",
+                                    candidate.node_id, candidate.score, reasons
+                                );
+                            }
+                        }
+                        OutputMode::Json => {
+                            let encoded = serde_json::to_string(&result)
+                                .unwrap_or_else(|err| panic!("find-nodes json encode failed: {err}"));
+                            println!("{encoded}");
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
+                },
+                AgentToolCommand::GetNodeInfo { node_id, output } => {
+                    match orchestrator::get_node_info(node_id.as_str()) {
+                        Ok(result) => match output {
+                            OutputMode::Text => {
+                                if let Some(node) = result.node {
+                                    println!(
+                                        "status={} node_id={} name={} type={} path={}",
+                                        node_info_status_label(&result.status),
+                                        node.node_id,
+                                        node.name,
+                                        node.node_type,
+                                        node.path
+                                    );
+                                } else {
+                                    println!(
+                                        "status={} node_id={}",
+                                        node_info_status_label(&result.status),
+                                        node_id
+                                    );
+                                }
+                            }
+                            OutputMode::Json => {
+                                let encoded = serde_json::to_string(&result).unwrap_or_else(|err| {
+                                    panic!("get-node-info json encode failed: {err}")
+                                });
+                                println!("{encoded}");
+                            }
+                        },
+                        Err(err) => emit_error_and_exit(err, output),
+                    }
+                }
+                AgentToolCommand::GetNodeScreenshot {
+                    file_key,
+                    node_id,
+                    figma_token,
+                    figma_api_base_url,
+                    output,
+                } => {
+                    let figma_token = normalize_optional_field(figma_token.as_deref())
+                        .or_else(figma_token_from_env)
+                        .unwrap_or_else(|| {
+                            emit_usage_error_and_exit(
+                                "get-node-screenshot missing required value(s): FIGMA_TOKEN (or --figma-token). Provide the missing value(s) and retry.",
+                                output,
+                            )
+                        });
+                    let request = figma_client::LiveScreenshotRequest::new(
+                        file_key,
+                        node_id,
+                        figma_token,
+                        normalize_optional_field(figma_api_base_url.as_deref()),
+                    )
+                    .unwrap_or_else(|err| emit_fetch_error_and_exit(err, output));
+
+                    match figma_client::fetch_node_screenshot_live(&request) {
+                        Ok(result) => match output {
+                            OutputMode::Text => {
+                                println!(
+                                    "status=ok node_id={} format={} image_url={}",
+                                    result.node_id, result.format, result.image_url
+                                );
+                            }
+                            OutputMode::Json => {
+                                let encoded = serde_json::to_string(&result).unwrap_or_else(|err| {
+                                    panic!("get-node-screenshot json encode failed: {err}")
+                                });
+                                println!("{encoded}");
+                            }
+                        },
+                        Err(err) => emit_fetch_error_and_exit(err, output),
+                    }
+                }
+            },
             _ => {
                 let stage_name = command.stage_name();
                 if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
@@ -205,6 +342,7 @@ impl Command {
             Command::Generate { .. } => "generate",
             Command::Stages { .. } => "stages",
             Command::RunStage { .. } => "run-stage",
+            Command::AgentTool { .. } => "agent-tool",
         }
     }
 }
@@ -236,6 +374,31 @@ fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -
         }
     }
     std::process::exit(2);
+}
+
+fn emit_fetch_error_and_exit(error: figma_client::FetchClientError, output: OutputMode) -> ! {
+    let message = error.to_string();
+    match output {
+        OutputMode::Text => eprintln!("{message}"),
+        OutputMode::Json => eprintln!("{{\"error\":\"{}\"}}", json_escape(&message)),
+    }
+    std::process::exit(2);
+}
+
+fn find_nodes_status_label(status: &orchestrator::FindNodesStatus) -> &'static str {
+    match status {
+        orchestrator::FindNodesStatus::Ok => "ok",
+        orchestrator::FindNodesStatus::LowConfidence => "low_confidence",
+        orchestrator::FindNodesStatus::NoMatch => "no_match",
+        orchestrator::FindNodesStatus::Ambiguous => "ambiguous",
+    }
+}
+
+fn node_info_status_label(status: &orchestrator::NodeInfoStatus) -> &'static str {
+    match status {
+        orchestrator::NodeInfoStatus::Ok => "ok",
+        orchestrator::NodeInfoStatus::NotFound => "not_found",
+    }
 }
 
 fn fetch_config_or_exit(

@@ -21,6 +21,11 @@
       "artifact": "output/specs/ui_spec.ron"
     },
     {
+      "stage": "build-agent-context",
+      "output": "output/agent",
+      "artifact": "output/agent/agent_context.json"
+    },
+    {
       "stage": "export-assets",
       "output": "output/assets",
       "artifact": "output/assets/asset_manifest.json"

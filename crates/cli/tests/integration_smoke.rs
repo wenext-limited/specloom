@@ -62,7 +62,7 @@ fn generate_success_smoke() {
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
+        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=build-agent-context output=output/agent artifact=output/agent/agent_context.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
     );
     assert!(out.stderr.is_empty());
 
@@ -83,7 +83,7 @@ fn generate_success_with_explicit_fixture_input_smoke() {
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
+        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=infer-layout output=output/inferred artifact=output/inferred/layout_inference.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=build-agent-context output=output/agent artifact=output/agent/agent_context.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
     );
     assert!(out.stderr.is_empty());
 

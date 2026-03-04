@@ -193,6 +193,7 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(text.contains("stage=export-assets output=output/assets"));
 }
 
@@ -240,7 +241,7 @@ fn stages_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"export-assets","output":"output/assets"}]}"#
+        r#"{"stages":[{"stage":"fetch","output":"output/raw"},{"stage":"normalize","output":"output/normalized"},{"stage":"infer-layout","output":"output/inferred"},{"stage":"build-spec","output":"output/specs"},{"stage":"build-agent-context","output":"output/agent"},{"stage":"export-assets","output":"output/assets"}]}"#
     );
 }
 
@@ -314,6 +315,7 @@ fn generate_subcommand_runs_full_pipeline() {
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(!text.contains("stage=gen-swiftui output=output/swift"));
     assert!(text.contains("stage=export-assets output=output/assets"));
 
@@ -380,6 +382,7 @@ fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=infer-layout output=output/inferred"));
     assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=build-agent-context output=output/agent"));
     assert!(text.contains("stage=export-assets output=output/assets"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
@@ -415,7 +418,7 @@ fn generate_subcommand_supports_json_output_mode() {
     assert!(output.status.success());
     assert_eq!(
         text.trim(),
-        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.ron"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"}]}"#
+        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.ron"},{"stage":"build-agent-context","output":"output/agent","artifact":"output/agent/agent_context.json"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"}]}"#
     );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
@@ -438,6 +441,65 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
     assert!(output.stdout.is_empty());
     assert!(stderr.contains("io error"));
     assert!(stderr.contains("working directory is writable"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn agent_tool_find_nodes_json_mode_returns_candidates() {
+    let workspace_root = unique_cli_workspace_root("agent_tool_find_nodes_json_mode");
+
+    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .arg("generate")
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args([
+            "agent-tool",
+            "find-nodes",
+            "--query",
+            "fixture root",
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"status\":\"low_confidence\""));
+    assert!(stdout.contains("\"node_id\":\"0:1\""));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn agent_tool_get_node_info_reports_not_found_actionably() {
+    let workspace_root = unique_cli_workspace_root("agent_tool_get_node_info_not_found");
+
+    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .arg("generate")
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args(["agent-tool", "get-node-info", "--node-id", "missing"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "status=not_found node_id=missing\n"
+    );
+    assert!(output.stderr.is_empty());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
