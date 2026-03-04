@@ -10,6 +10,9 @@ pub enum UiSpec {
         id: String,
         name: String,
         #[serde(default)]
+        #[serde(skip_serializing_if = "String::is_empty")]
+        text: String,
+        #[serde(default)]
         #[serde(skip_serializing_if = "Vec::is_empty")]
         children: Vec<UiSpec>,
     },
@@ -55,6 +58,7 @@ impl Default for UiSpec {
         Self::Container {
             id: String::new(),
             name: String::new(),
+            text: String::new(),
             children: Vec::new(),
         }
     }
@@ -166,6 +170,17 @@ fn build_ui_spec_node(
     }
 
     let node_type = map_node_type(node);
+    if node_type == NodeType::Container {
+        if let Some(text) = single_text_child_name(children.as_slice()) {
+            return Ok(UiSpec::Container {
+                id: node.id.clone(),
+                name: node.name.clone(),
+                text,
+                children: Vec::new(),
+            });
+        }
+    }
+
     if node_type == NodeType::Container
         && has_at_least_one_vector_and_remaining_shapes(children.as_slice())
     {
@@ -209,6 +224,7 @@ fn build_ui_spec_node(
         NodeType::Container => UiSpec::Container {
             id: node.id.clone(),
             name: node.name.clone(),
+            text: String::new(),
             children,
         },
         NodeType::Instance => UiSpec::Instance {
@@ -237,6 +253,13 @@ fn build_ui_spec_node(
             children,
         },
     })
+}
+
+fn single_text_child_name(children: &[UiSpec]) -> Option<String> {
+    match children {
+        [UiSpec::Text { name, .. }] => Some(name.clone()),
+        _ => None,
+    }
 }
 
 fn all_children_are_shape(children: &[UiSpec]) -> bool {
@@ -348,6 +371,7 @@ mod tests {
         let spec = UiSpec::Container {
             id: "1:1".to_string(),
             name: "Root".to_string(),
+            text: String::new(),
             children: vec![UiSpec::Text {
                 id: "1:2".to_string(),
                 name: "Title".to_string(),
@@ -365,6 +389,7 @@ mod tests {
         let spec = UiSpec::Container {
             id: "1:1".to_string(),
             name: "Root".to_string(),
+            text: String::new(),
             children: vec![UiSpec::Vector {
                 id: "1:2".to_string(),
                 name: "Icon".to_string(),
@@ -376,6 +401,29 @@ mod tests {
         let second = spec.to_pretty_ron().unwrap();
         assert_eq!(first, second);
         assert!(first.contains("Container("));
+        assert!(!first.contains("text:"));
+    }
+
+    #[test]
+    fn container_text_field_omits_when_empty_and_serializes_when_present() {
+        let empty_text = UiSpec::Container {
+            id: "1:1".to_string(),
+            name: "Root".to_string(),
+            text: String::new(),
+            children: Vec::new(),
+        };
+        let filled_text = UiSpec::Container {
+            id: "1:1".to_string(),
+            name: "Root".to_string(),
+            text: "Title".to_string(),
+            children: Vec::new(),
+        };
+
+        let empty_ron = empty_text.to_pretty_ron().unwrap();
+        let filled_ron = filled_text.to_pretty_ron().unwrap();
+
+        assert!(!empty_ron.contains("text:"));
+        assert!(filled_ron.contains("text: \"Title\""));
     }
 
     #[test]
@@ -456,6 +504,36 @@ mod tests {
     }
 
     #[test]
+    fn build_ui_spec_collapses_container_with_single_text_child_into_text_field() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![container_node("1:1", vec!["2:1".to_string()]), text_node("2:1")],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.node_type(), NodeType::Container);
+        assert!(spec.children().is_empty());
+        match spec {
+            UiSpec::Container { text, .. } => assert_eq!(text, "Text"),
+            _ => panic!("expected container"),
+        }
+    }
+
+    #[test]
     fn build_ui_spec_omits_invisible_nodes() {
         let normalized = figma_normalizer::NormalizationOutput {
             document: figma_normalizer::NormalizedDocument {
@@ -492,7 +570,11 @@ mod tests {
             .map(|child| child.id().to_string())
             .collect::<Vec<_>>();
 
-        assert_eq!(child_ids, vec!["2:1".to_string()]);
+        assert!(child_ids.is_empty());
+        match spec {
+            UiSpec::Container { text, .. } => assert_eq!(text, "Text"),
+            _ => panic!("expected container"),
+        }
     }
 
     #[test]
@@ -630,7 +712,11 @@ mod tests {
 
         let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
         assert_eq!(spec.node_type(), NodeType::Container);
-        assert_eq!(spec.children().len(), 1);
+        assert!(spec.children().is_empty());
+        match spec {
+            UiSpec::Container { text, .. } => assert_eq!(text, "Text"),
+            _ => panic!("expected container"),
+        }
     }
 
     #[test]
