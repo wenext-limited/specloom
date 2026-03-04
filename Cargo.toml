@@ -7,5 +7,6 @@ members = [
   "crates/ui_spec",
   "crates/asset_pipeline",
   "crates/orchestrator",
+  "crates/agent_context",
 ]
 resolver = "2"
