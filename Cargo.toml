@@ -1,0 +1,14 @@
+[workspace]
+members = [
+  "crates/cli",
+  "crates/figma_client",
+  "crates/figma_normalizer",
+  "crates/layout_infer",
+  "crates/ui_spec",
+  "crates/swiftui_ast",
+  "crates/swiftui_codegen",
+  "crates/asset_pipeline",
+  "crates/review_report",
+  "crates/orchestrator",
+]
+resolver = "2"
