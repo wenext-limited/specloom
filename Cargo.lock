@@ -626,7 +626,6 @@ dependencies = [
  "asset_pipeline",
  "figma_client",
  "figma_normalizer",
- "layout_infer",
  "ron",
  "serde",
  "serde_json",

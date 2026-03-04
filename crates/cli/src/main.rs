@@ -19,7 +19,6 @@ enum Command {
         output: OutputMode,
     },
     Normalize,
-    InferLayout,
     BuildSpec,
     ExportAssets,
     Generate {
@@ -336,7 +335,6 @@ impl Command {
         match self {
             Command::Fetch { .. } => "fetch",
             Command::Normalize => "normalize",
-            Command::InferLayout => "infer-layout",
             Command::BuildSpec => "build-spec",
             Command::ExportAssets => "export-assets",
             Command::Generate { .. } => "generate",

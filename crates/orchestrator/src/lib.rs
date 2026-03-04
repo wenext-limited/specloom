@@ -152,6 +152,7 @@ const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_do
 const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.ron";
 const PRE_LAYOUT_ARTIFACT_RELATIVE_PATH: &str = "output/specs/pre_layout.ron";
 const NODE_MAP_ARTIFACT_RELATIVE_PATH: &str = "output/specs/node_map.json";
+const TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH: &str = "output/specs/transform_plan.json";
 const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
 const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
 const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
@@ -176,6 +177,7 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         SPEC_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         PRE_LAYOUT_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         NODE_MAP_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
+        TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         SEARCH_INDEX_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
@@ -523,20 +525,30 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
         workspace_root,
         NORMALIZED_ARTIFACT_RELATIVE_PATH,
     )?;
-    let inferred = layout_infer::infer_layout(&normalized.document);
-
-    let spec = ui_spec::build_ui_spec(&normalized, &inferred).map_err(ui_spec_build_error)?;
-    let encoded = spec
+    let pre_layout = ui_spec::build_pre_layout_spec(&normalized).map_err(ui_spec_build_error)?;
+    let pre_layout_encoded = pre_layout
         .to_pretty_ron()
         .map_err(|err| PipelineError::Serialization(err.to_string()))?;
 
     let pre_layout_path = workspace_root.join(PRE_LAYOUT_ARTIFACT_RELATIVE_PATH);
-    write_bytes(pre_layout_path.as_path(), encoded.as_bytes())?;
+    write_bytes(pre_layout_path.as_path(), pre_layout_encoded.as_bytes())?;
 
     let node_map_path = workspace_root.join(NODE_MAP_ARTIFACT_RELATIVE_PATH);
     let node_map = build_node_map_artifact(&normalized).map_err(serialization_error)?;
     let node_map_bytes = serde_json::to_vec_pretty(&node_map).map_err(serialization_error)?;
     write_bytes(node_map_path.as_path(), node_map_bytes.as_slice())?;
+
+    let transform_plan = generate_transform_plan(&pre_layout, &node_map)?;
+    let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+    let transform_plan_bytes =
+        serde_json::to_vec_pretty(&transform_plan).map_err(serialization_error)?;
+    write_bytes(transform_plan_path.as_path(), transform_plan_bytes.as_slice())?;
+
+    let spec =
+        ui_spec::apply_transform_plan(&pre_layout, &transform_plan).map_err(ui_spec_build_error)?;
+    let encoded = spec
+        .to_pretty_ron()
+        .map_err(|err| PipelineError::Serialization(err.to_string()))?;
 
     let output_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
     write_bytes(output_path.as_path(), encoded.as_bytes())?;
@@ -563,6 +575,13 @@ fn build_node_map_artifact(
         version: "node_map/1.0".to_string(),
         nodes,
     })
+}
+
+fn generate_transform_plan(
+    _pre_layout: &ui_spec::UiSpec,
+    _node_map: &NodeMapArtifact,
+) -> Result<ui_spec::TransformPlan, PipelineError> {
+    Ok(ui_spec::TransformPlan::default())
 }
 
 fn run_build_agent_context_stage(workspace_root: &Path) -> Result<String, PipelineError> {
@@ -709,7 +728,12 @@ fn node_name(node: &ui_spec::UiSpec) -> &str {
         | ui_spec::UiSpec::Text { name, .. }
         | ui_spec::UiSpec::Image { name, .. }
         | ui_spec::UiSpec::Shape { name, .. }
-        | ui_spec::UiSpec::Vector { name, .. } => name.as_str(),
+        | ui_spec::UiSpec::Vector { name, .. }
+        | ui_spec::UiSpec::Button { name, .. }
+        | ui_spec::UiSpec::ScrollView { name, .. }
+        | ui_spec::UiSpec::HStack { name, .. }
+        | ui_spec::UiSpec::VStack { name, .. }
+        | ui_spec::UiSpec::ZStack { name, .. } => name.as_str(),
     }
 }
 
@@ -721,6 +745,11 @@ fn node_type_label(node: &ui_spec::UiSpec) -> &'static str {
         ui_spec::NodeType::Image => "IMAGE",
         ui_spec::NodeType::Shape => "SHAPE",
         ui_spec::NodeType::Vector => "VECTOR",
+        ui_spec::NodeType::Button => "BUTTON",
+        ui_spec::NodeType::ScrollView => "SCROLL_VIEW",
+        ui_spec::NodeType::HStack => "HSTACK",
+        ui_spec::NodeType::VStack => "VSTACK",
+        ui_spec::NodeType::ZStack => "ZSTACK",
     }
 }
 
@@ -1058,6 +1087,15 @@ mod tests {
             serde_json::from_str(node_map.as_str()).expect("node map should decode");
         assert_eq!(node_map_value["version"], "node_map/1.0");
         assert!(node_map_value["nodes"].is_object());
+
+        let transform_plan_path = workspace_root.join("output/specs/transform_plan.json");
+        assert!(transform_plan_path.is_file());
+        let transform_plan = std::fs::read_to_string(transform_plan_path)
+            .expect("transform plan should be readable");
+        let transform_plan_value: serde_json::Value =
+            serde_json::from_str(transform_plan.as_str()).expect("transform plan should decode");
+        assert_eq!(transform_plan_value["version"], "transform_plan/1.0");
+        assert!(transform_plan_value["decisions"].is_array());
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
