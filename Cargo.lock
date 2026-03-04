@@ -635,6 +635,7 @@ dependencies = [
  "swiftui_ast",
  "swiftui_codegen",
  "thiserror",
+ "ui_blueprint",
  "ui_spec",
 ]
 
