@@ -37,6 +37,14 @@ Key docs:
 5. Add tests with behavior changes whenever practical.
 6. Verify before claiming completion.
 
+## Phase Transition Rule
+
+1. Treat each milestone/phase as an isolated branch of work.
+2. When a phase is complete and verified, merge it into `main` locally unless the user asks otherwise.
+3. After merging, verify again on merged `main`.
+4. Start the next phase from a new branch based on the latest `main` (not from the previous phase branch).
+5. Commit after each completed task within a phase.
+
 ## Coding Rules
 
 1. Use Rust 2024 (`edition = "2024"`).
