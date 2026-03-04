@@ -27,6 +27,8 @@ Key docs:
 - `docs/plans/2026-03-04-figma-swiftui-generator-design.md`
 - `docs/plans/2026-03-04-figma-swiftui-generator.md`
 - `docs/commit-style.md`
+- `docs/plans/boards/README.md`
+- `docs/plans/templates/parallel-phase-board-template.md`
 
 ## Agent Workflow
 
@@ -36,6 +38,10 @@ Key docs:
 4. Never silently drop unsupported features; surface warnings clearly.
 5. Add tests with behavior changes whenever practical.
 6. Verify before claiming completion.
+7. For parallelizable phases, use a board in `docs/plans/boards/` with task statuses:
+   - `[ ]` not started
+   - `[~]` in progress
+   - `[x]` completed
 
 ## Phase Transition Rule
 
