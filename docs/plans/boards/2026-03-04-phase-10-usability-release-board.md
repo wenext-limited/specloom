@@ -3,7 +3,7 @@
 **Phase ID:** `P10`
 **Goal:** Make pipeline usable by contributors through docs, hardened errors, and final verification gates.
 **Source Plan:** `docs/plans/2026-03-04-project-readiness-implementation.md`
-**Last Updated:** `2026-03-04 16:24 CST`
+**Last Updated:** `2026-03-04 16:28 CST`
 
 ## Status Legend
 
@@ -19,7 +19,7 @@
 | [x] | P10-T2 | Document full CLI workflow | codex | P10-T1 | `README.md`, `docs/plans/boards/README.md` | docs self-check + command copy/paste check | `5841ec7` | Started 2026-03-04 16:04 CST; documented workflow matrix and validated all documented command variants via copy/paste |
 | [x] | P10-T3 | Harden CLI and orchestrator error UX | codex | - | `crates/cli/src/main.rs`, `crates/orchestrator/src/lib.rs`, `crates/cli/tests/commands.rs` | `cargo test -p cli && cargo test -p orchestrator` | `04dacca` | Started 2026-03-04 16:12 CST; added actionable error guidance for unknown stage, missing artifacts, and workspace IO failures |
 | [x] | P10-T4 | Extend verification script with e2e smoke | codex | P10-T3 | `scripts/verify_workspace.sh` | `bash scripts/verify_workspace.sh` | `31520ee` | Started 2026-03-04 16:21 CST; verification script now runs deterministic CLI e2e generate smoke checks |
-| [ ] | P10-T5 | Final readiness gate and closeout | unassigned | P10-T2,P10-T4 | `docs/plans/boards/2026-03-04-phase-10-usability-release-board.md` | `cargo fmt --all --check && cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Manual README quickstart run required |
+| [~] | P10-T5 | Final readiness gate and closeout | codex | P10-T2,P10-T4 | `docs/plans/boards/2026-03-04-phase-10-usability-release-board.md` | `cargo fmt --all --check && cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Started 2026-03-04 16:28 CST; running final readiness gates and README quickstart walkthrough |
 
 ## Parallelization Rules
 
