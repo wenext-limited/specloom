@@ -16,6 +16,30 @@ Use board-style phase plans when work can be split across multiple agents.
 4. Change it to `[x]`, fill `Commit`, and record verification evidence.
 5. If blocked, keep `[~]` and write the blocker in `Notes`.
 
+## Parallel Dispatch Protocol
+
+1. Dispatch in parallel only when task-owned files do not overlap.
+2. Keep one owner per `[~]` row and include task ID in assignment prompts.
+3. Require each owner to report task verification output before row completion.
+4. After parallel work returns, verify on the controller branch before committing.
+
+## Stage Command Quick Reference
+
+The CLI supports stage inspection and execution with deterministic text or JSON output.
+
+Examples:
+
+1. List all stages in text mode (default):
+   `cargo run -p cli -- stages`
+2. List all stages in JSON mode:
+   `cargo run -p cli -- stages --output json`
+3. Run one stage in text mode (default):
+   `cargo run -p cli -- run-stage normalize`
+4. Run one stage in JSON mode:
+   `cargo run -p cli -- run-stage normalize --output json`
+
+Unknown stage execution returns exit code `2` and an explicit error message.
+
 ## Merge Protocol
 
 1. When all tasks in the phase board are `[x]`, merge the phase into `main`.
