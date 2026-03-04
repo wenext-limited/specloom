@@ -20,6 +20,7 @@ enum Command {
     ExportAssets,
     Report,
     Stages,
+    RunStage { stage: String },
 }
 
 fn main() {
@@ -31,6 +32,18 @@ fn main() {
                     println!("stage={stage} output={output}");
                 }
             }
+            Command::RunStage { stage } => match orchestrator::run_stage(&stage) {
+                Ok(result) => {
+                    println!(
+                        "stage={} output={}",
+                        result.stage_name, result.output_dir
+                    );
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(2);
+                }
+            },
             _ => {
                 let stage_name = command.stage_name();
                 if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
@@ -55,6 +68,7 @@ impl Command {
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
             Command::Stages => "stages",
+            Command::RunStage { .. } => "run-stage",
         }
     }
 }

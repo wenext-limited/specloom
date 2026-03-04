@@ -36,3 +36,28 @@ fn stages_subcommand_lists_all_stage_outputs() {
     assert!(text.contains("stage=export-assets output=output/assets"));
     assert!(text.contains("stage=report output=output/reports"));
 }
+
+#[test]
+fn run_stage_subcommand_runs_selected_stage() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "normalize"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(text.contains("stage=normalize output=output/normalized"));
+}
+
+#[test]
+fn run_stage_subcommand_rejects_unknown_stage() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .args(["run-stage", "not-a-stage"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("unknown stage"));
+    assert!(stderr.contains("not-a-stage"));
+}
