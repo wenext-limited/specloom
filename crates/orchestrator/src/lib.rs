@@ -538,7 +538,7 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
     let node_map_bytes = serde_json::to_vec_pretty(&node_map).map_err(serialization_error)?;
     write_bytes(node_map_path.as_path(), node_map_bytes.as_slice())?;
 
-    let transform_plan = generate_transform_plan(&pre_layout, &node_map)?;
+    let transform_plan = generate_transform_plan(workspace_root, &pre_layout, &node_map)?;
     let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
     let transform_plan_bytes =
         serde_json::to_vec_pretty(&transform_plan).map_err(serialization_error)?;
@@ -578,9 +578,17 @@ fn build_node_map_artifact(
 }
 
 fn generate_transform_plan(
+    workspace_root: &Path,
     _pre_layout: &ui_spec::UiSpec,
     _node_map: &NodeMapArtifact,
 ) -> Result<ui_spec::TransformPlan, PipelineError> {
+    let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+    if transform_plan_path.exists() {
+        let bytes = std::fs::read(transform_plan_path.as_path()).map_err(io_error)?;
+        return serde_json::from_slice::<ui_spec::TransformPlan>(bytes.as_slice())
+            .map_err(serialization_error);
+    }
+
     Ok(ui_spec::TransformPlan::default())
 }
 
@@ -1158,6 +1166,61 @@ mod tests {
 
         assert!(workspace_root.join("output/agent/agent_context.json").is_file());
         assert!(workspace_root.join("output/agent/search_index.json").is_file());
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn build_agent_context_uses_transformed_final_spec() {
+        let workspace_root =
+            unique_test_workspace_root("build_agent_context_uses_transformed_final_spec");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run second");
+
+        let seeded_plan = ui_spec::TransformPlan {
+            version: ui_spec::TRANSFORM_PLAN_VERSION.to_string(),
+            decisions: vec![ui_spec::TransformDecision {
+                node_id: "0:1".to_string(),
+                suggested_type: ui_spec::SuggestedNodeType::HStack,
+                child_policy: ui_spec::ChildPolicy {
+                    mode: ui_spec::ChildPolicyMode::Keep,
+                    children: Vec::new(),
+                },
+                confidence: 0.93,
+                reason: "Agent recognized horizontal root".to_string(),
+            }],
+        };
+        let seeded_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+        if let Some(parent) = seeded_plan_path.parent() {
+            std::fs::create_dir_all(parent).expect("seeded plan parent should be creatable");
+        }
+        let seeded_plan_bytes =
+            serde_json::to_vec_pretty(&seeded_plan).expect("seeded plan should serialize");
+        std::fs::write(seeded_plan_path.as_path(), seeded_plan_bytes)
+            .expect("seeded plan should be written");
+
+        run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run third");
+        run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect("build-agent-context should run fourth");
+
+        let spec_ron = std::fs::read_to_string(workspace_root.join("output/specs/ui_spec.ron"))
+            .expect("final spec should be readable");
+        assert!(spec_ron.contains("HStack("));
+
+        let search_index_json =
+            std::fs::read_to_string(workspace_root.join("output/agent/search_index.json"))
+                .expect("search index should be readable");
+        let search_index: agent_context::SearchIndex =
+            serde_json::from_str(search_index_json.as_str()).expect("search index should decode");
+        let root_entry = search_index
+            .entries
+            .iter()
+            .find(|entry| entry.node_id == "0:1")
+            .expect("root entry should exist");
+        assert_eq!(root_entry.node_type, "HSTACK");
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }

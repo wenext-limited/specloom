@@ -5,7 +5,7 @@ Figma node tree to spec-first UI pipeline workspace in Rust 2024.
 This repository implements a deterministic, stage-based pipeline that produces:
 
 1. normalized/intermediate JSON artifacts
-2. `ui_spec.ron` (minimal structure-only spec tree)
+2. spec artifacts (`pre_layout.ron`, `node_map.json`, `transform_plan.json`, `ui_spec.ron`)
 3. agent context/search artifacts for lookup tooling
 4. asset manifest metadata
 
@@ -60,10 +60,16 @@ Generated artifacts:
 | --- | --- | --- |
 | `fetch` | `output/raw` | `output/raw/fetch_snapshot.json` |
 | `normalize` | `output/normalized` | `output/normalized/normalized_document.json` |
-| `infer-layout` | `output/inferred` | `output/inferred/layout_inference.json` |
-| `build-spec` | `output/specs` | `output/specs/ui_spec.ron` |
+| `build-spec` | `output/specs` | `output/specs/pre_layout.ron`, `output/specs/node_map.json`, `output/specs/transform_plan.json`, `output/specs/ui_spec.ron` |
 | `build-agent-context` | `output/agent` | `output/agent/agent_context.json`, `output/agent/search_index.json` |
 | `export-assets` | `output/assets` | `output/assets/asset_manifest.json` |
+
+Within `build-spec`, artifacts are produced in this order:
+
+1. `pre_layout.ron` (deterministic pre-transform tree)
+2. `node_map.json` (raw normalized node payload map)
+3. `transform_plan.json` (agent decisions with `child_policy`)
+4. `ui_spec.ron` (final transformed spec consumed downstream)
 
 ## CLI Commands
 
@@ -131,9 +137,9 @@ cargo run -p cli -- agent-tool get-node-screenshot --file-key <FILE_KEY> --node-
 
 Notes:
 
-1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-agent-context`, and `export-assets`.
+1. Valid stages are: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
-3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-agent-context`, and `export-assets`.
+3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 4. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## Scope
