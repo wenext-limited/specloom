@@ -1,14 +1,22 @@
 #![forbid(unsafe_code)]
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum PipelineError {
     #[error("unsupported feature: {0}")]
     UnsupportedFeature(String),
+    #[error("unknown stage: {0}")]
+    UnknownStage(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineStageDefinition {
     pub name: &'static str,
+    pub output_dir: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageExecutionResult {
+    pub stage_name: &'static str,
     pub output_dir: &'static str,
 }
 
@@ -54,6 +62,19 @@ pub fn pipeline_stage_output_dirs() -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
+pub fn run_stage(stage_name: &str) -> Result<StageExecutionResult, PipelineError> {
+    let stage = PIPELINE_STAGES
+        .iter()
+        .copied()
+        .find(|candidate| candidate.name == stage_name)
+        .ok_or_else(|| PipelineError::UnknownStage(stage_name.to_string()))?;
+
+    Ok(StageExecutionResult {
+        stage_name: stage.name,
+        output_dir: stage.output_dir,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +116,23 @@ mod tests {
                 ("report", "output/reports"),
             ]
         );
+    }
+
+    #[test]
+    fn run_stage_returns_execution_result_for_known_stage() {
+        let result = run_stage("normalize").expect("known stage should run");
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "normalize",
+                output_dir: "output/normalized",
+            }
+        );
+    }
+
+    #[test]
+    fn run_stage_returns_error_for_unknown_stage() {
+        let err = run_stage("not-a-stage").expect_err("unknown stage should fail");
+        assert_eq!(err, PipelineError::UnknownStage("not-a-stage".to_string()));
     }
 }
