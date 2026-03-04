@@ -94,19 +94,10 @@ fn sanitize_identifier(value: &str) -> String {
         .collect::<String>()
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerationMetadata {
     pub source_file_key: String,
     pub generator_version: String,
-}
-
-impl Default for GenerationMetadata {
-    fn default() -> Self {
-        Self {
-            source_file_key: String::new(),
-            generator_version: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

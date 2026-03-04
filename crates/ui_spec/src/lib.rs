@@ -35,22 +35,12 @@ impl UiSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiSpecSource {
     pub file_key: String,
     pub root_node_id: String,
     pub generator_version: String,
-}
-
-impl Default for UiSpecSource {
-    fn default() -> Self {
-        Self {
-            file_key: String::new(),
-            root_node_id: String::new(),
-            generator_version: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
