@@ -211,6 +211,90 @@ pub struct BlueprintWarning {
     pub node_id: Option<String>,
 }
 
+pub fn build_ui_blueprint(spec: &ui_spec::UiSpec) -> UiBlueprint {
+    UiBlueprint {
+        version: UI_BLUEPRINT_VERSION.to_string(),
+        document: BlueprintDocument {
+            file_key: spec.source.file_key.clone(),
+            root_node_id: spec.source.root_node_id.clone(),
+            name: spec.root.name.clone(),
+            viewport: None,
+        },
+        design_tokens: BlueprintDesignTokens::default(),
+        components: Vec::new(),
+        screens: vec![BlueprintScreen {
+            id: format!("screen/{}", spec.source.root_node_id),
+            name: spec.root.name.clone(),
+            root: map_ui_node(&spec.root),
+        }],
+        assets: Vec::new(),
+        warnings: spec.warnings.iter().map(BlueprintWarning::from).collect(),
+    }
+}
+
+fn map_ui_node(node: &ui_spec::UiNode) -> BlueprintNode {
+    BlueprintNode {
+        id: node.id.clone(),
+        name: node.name.clone(),
+        role: map_ui_node_role(&node.kind),
+        layout: BlueprintLayout {
+            kind: map_ui_layout_kind(&node.layout.strategy),
+            gap: (node.layout.item_spacing > 0.0).then_some(node.layout.item_spacing),
+        },
+        style: BlueprintStyle {
+            opacity: ((node.style.opacity - 1.0).abs() > 0.000_01).then_some(node.style.opacity),
+            corner_radius: node.style.corner_radius,
+        },
+        content: map_ui_content(node),
+        semantics: Vec::new(),
+        children: node.children.iter().map(map_ui_node).collect(),
+    }
+}
+
+fn map_ui_node_role(kind: &ui_spec::UiNodeKind) -> BlueprintNodeRole {
+    match kind {
+        ui_spec::UiNodeKind::Container => BlueprintNodeRole::Container,
+        ui_spec::UiNodeKind::Text => BlueprintNodeRole::Text,
+        ui_spec::UiNodeKind::Image => BlueprintNodeRole::Image,
+        ui_spec::UiNodeKind::Shape => BlueprintNodeRole::Shape,
+        ui_spec::UiNodeKind::Unknown => BlueprintNodeRole::Unknown,
+    }
+}
+
+fn map_ui_layout_kind(strategy: &ui_spec::UiLayoutStrategy) -> BlueprintLayoutKind {
+    match strategy {
+        ui_spec::UiLayoutStrategy::VStack => BlueprintLayoutKind::StackV,
+        ui_spec::UiLayoutStrategy::HStack => BlueprintLayoutKind::StackH,
+        ui_spec::UiLayoutStrategy::Overlay => BlueprintLayoutKind::Overlay,
+        ui_spec::UiLayoutStrategy::Absolute => BlueprintLayoutKind::Absolute,
+        ui_spec::UiLayoutStrategy::Scroll => BlueprintLayoutKind::Scroll,
+    }
+}
+
+fn map_ui_content(node: &ui_spec::UiNode) -> Option<BlueprintContent> {
+    match node.kind {
+        ui_spec::UiNodeKind::Text => Some(BlueprintContent {
+            text: Some(node.name.clone()),
+            asset_id: None,
+        }),
+        ui_spec::UiNodeKind::Image => Some(BlueprintContent {
+            text: None,
+            asset_id: Some(node.name.clone()),
+        }),
+        _ => None,
+    }
+}
+
+impl From<&ui_spec::UiSpecWarning> for BlueprintWarning {
+    fn from(value: &ui_spec::UiSpecWarning) -> Self {
+        Self {
+            code: value.code.clone(),
+            message: value.message.clone(),
+            node_id: value.node_id.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +346,75 @@ mod tests {
     fn default_blueprint_uses_current_schema_version() {
         let blueprint = UiBlueprint::default();
         assert_eq!(blueprint.version, UI_BLUEPRINT_VERSION);
+    }
+
+    #[test]
+    fn build_blueprint_from_ui_spec_maps_root_layout_and_warnings() {
+        let spec = ui_spec::UiSpec {
+            source: ui_spec::UiSpecSource {
+                file_key: "abc123".to_string(),
+                root_node_id: "123:456".to_string(),
+                generator_version: "0.1.0".to_string(),
+            },
+            root: ui_spec::UiNode {
+                id: "123:456".to_string(),
+                name: "Login".to_string(),
+                kind: ui_spec::UiNodeKind::Container,
+                layout: ui_spec::UiLayout {
+                    strategy: ui_spec::UiLayoutStrategy::VStack,
+                    item_spacing: 16.0,
+                },
+                style: ui_spec::UiStyle {
+                    opacity: 0.8,
+                    corner_radius: Some(12.0),
+                },
+                children: vec![ui_spec::UiNode {
+                    id: "123:457".to_string(),
+                    name: "Continue".to_string(),
+                    kind: ui_spec::UiNodeKind::Text,
+                    layout: ui_spec::UiLayout {
+                        strategy: ui_spec::UiLayoutStrategy::Absolute,
+                        item_spacing: 0.0,
+                    },
+                    style: ui_spec::UiStyle::default(),
+                    children: Vec::new(),
+                }],
+            },
+            warnings: vec![ui_spec::UiSpecWarning {
+                code: "LOW_CONFIDENCE_LAYOUT".to_string(),
+                message: "layout inferred with low confidence".to_string(),
+                node_id: Some("123:456".to_string()),
+            }],
+            ..ui_spec::UiSpec::default()
+        };
+
+        let blueprint = build_ui_blueprint(&spec);
+        assert_eq!(blueprint.version, UI_BLUEPRINT_VERSION);
+        assert_eq!(blueprint.document.file_key, "abc123");
+        assert_eq!(blueprint.document.root_node_id, "123:456");
+        assert_eq!(blueprint.document.name, "Login");
+        assert_eq!(blueprint.screens.len(), 1);
+        assert_eq!(blueprint.screens[0].root.layout.kind, BlueprintLayoutKind::StackV);
+        assert_eq!(blueprint.screens[0].root.layout.gap, Some(16.0));
+        assert_eq!(blueprint.screens[0].root.children.len(), 1);
+        assert_eq!(
+            blueprint.screens[0].root.children[0].role,
+            BlueprintNodeRole::Text
+        );
+        assert_eq!(
+            blueprint.screens[0].root.children[0].content,
+            Some(BlueprintContent {
+                text: Some("Continue".to_string()),
+                asset_id: None,
+            })
+        );
+        assert_eq!(
+            blueprint.warnings,
+            vec![BlueprintWarning {
+                code: "LOW_CONFIDENCE_LAYOUT".to_string(),
+                message: "layout inferred with low confidence".to_string(),
+                node_id: Some("123:456".to_string()),
+            }]
+        );
     }
 }
