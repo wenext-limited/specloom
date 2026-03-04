@@ -63,6 +63,23 @@ cargo run -p cli -- generate
 cargo run -p cli -- generate --output json
 ```
 
+## CLI Workflow Matrix
+
+| Goal | Command | Output Mode |
+| --- | --- | --- |
+| Inspect all stage output directories | `cargo run -p cli -- stages` | text (default) |
+| Inspect all stage output directories as machine-readable data | `cargo run -p cli -- stages --output json` | json |
+| Run one stage with human-readable output | `cargo run -p cli -- run-stage <stage>` | text (default) |
+| Run one stage with machine-readable output | `cargo run -p cli -- run-stage <stage> --output json` | json |
+| Run end-to-end pipeline with per-stage artifact lines | `cargo run -p cli -- generate` | text (default) |
+| Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
+
+Notes:
+
+1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `gen-swiftui`, `export-assets`, and `report`.
+2. Invalid stage execution returns exit code `2` with an explicit error message.
+3. `generate` runs all stages sequentially in the order listed above.
+
 ## Scope
 
 In-scope right now:

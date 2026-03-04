@@ -37,8 +37,18 @@ Examples:
    `cargo run -p cli -- run-stage normalize`
 4. Run one stage in JSON mode:
    `cargo run -p cli -- run-stage normalize --output json`
+5. Run full pipeline in text mode (default):
+   `cargo run -p cli -- generate`
+6. Run full pipeline in JSON mode:
+   `cargo run -p cli -- generate --output json`
 
 Unknown stage execution returns exit code `2` and an explicit error message.
+
+Workflow note:
+
+1. Use `stages` to inspect directories.
+2. Use `run-stage` for targeted debugging of a single stage.
+3. Use `generate` for full end-to-end artifact generation.
 
 ## Merge Protocol
 
