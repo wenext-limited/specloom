@@ -167,7 +167,8 @@ fn build_ui_spec_node(
 
     let node_type = map_node_type(node);
     if matches!(node_type, NodeType::Container | NodeType::Instance)
-        && has_single_image_and_remaining_shapes(children.as_slice())
+        && (has_single_image_and_remaining_shapes(children.as_slice())
+            || has_single_image_child(children.as_slice()))
     {
         return Ok(UiSpec::Image {
             id: node.id.clone(),
@@ -241,6 +242,10 @@ fn has_single_image_and_remaining_shapes(children: &[UiSpec]) -> bool {
     }
 
     image_count == 1 && shape_count >= 1
+}
+
+fn has_single_image_child(children: &[UiSpec]) -> bool {
+    matches!(children, [child] if child.node_type() == NodeType::Image)
 }
 
 fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
@@ -386,8 +391,9 @@ mod tests {
                     figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
                 },
                 nodes: vec![
-                    container_node("1:1", vec!["2:1".to_string()]),
+                    container_node("1:1", vec!["2:1".to_string(), "3:1".to_string()]),
                     image_node("2:1"),
+                    text_node("3:1"),
                 ],
             },
             warnings: Vec::new(),
@@ -400,6 +406,7 @@ mod tests {
         };
 
         let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.node_type(), NodeType::Container);
         assert_eq!(spec.children()[0].node_type(), NodeType::Image);
     }
 
@@ -717,7 +724,7 @@ mod tests {
                     figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
                 },
                 nodes: vec![
-                    container_node("1:1", vec!["2:1".to_string()]),
+                    container_node("1:1", vec!["2:1".to_string(), "6:1".to_string()]),
                     instance_node(
                         "2:1",
                         vec!["3:1".to_string(), "4:1".to_string(), "5:1".to_string()],
@@ -725,6 +732,68 @@ mod tests {
                     image_node("3:1"),
                     rectangle_node("4:1"),
                     rectangle_node("5:1"),
+                    text_node("6:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        let collapsed = &spec.children()[0];
+        assert_eq!(collapsed.node_type(), NodeType::Image);
+        assert!(collapsed.children().is_empty());
+    }
+
+    #[test]
+    fn build_ui_spec_collapses_container_with_single_image_child_to_image() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    container_node("1:1", vec!["2:1".to_string()]),
+                    image_node("2:1"),
+                ],
+            },
+            warnings: Vec::new(),
+        };
+        let inferred = layout_infer::InferredLayoutDocument {
+            inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
+            source_file_key: "abc123".to_string(),
+            root_node_id: "1:1".to_string(),
+            decisions: Vec::new(),
+        };
+
+        let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+        assert_eq!(spec.node_type(), NodeType::Image);
+        assert!(spec.children().is_empty());
+    }
+
+    #[test]
+    fn build_ui_spec_collapses_instance_with_single_image_child_to_image() {
+        let normalized = figma_normalizer::NormalizationOutput {
+            document: figma_normalizer::NormalizedDocument {
+                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
+                source: figma_normalizer::NormalizedSource {
+                    file_key: "abc123".to_string(),
+                    root_node_id: "1:1".to_string(),
+                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                },
+                nodes: vec![
+                    container_node("1:1", vec!["2:1".to_string(), "4:1".to_string()]),
+                    instance_node("2:1", vec!["3:1".to_string()]),
+                    image_node("3:1"),
+                    text_node("4:1"),
                 ],
             },
             warnings: Vec::new(),
