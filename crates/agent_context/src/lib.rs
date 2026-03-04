@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod search;
+
+pub use search::{
+    SearchMatch, SearchResult, SearchStatus, classify_status, normalize_tokens, rank_candidates,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentContext {
