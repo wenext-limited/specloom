@@ -11,6 +11,8 @@ pub struct UiSpec {
     pub spec_version: String,
     pub source: UiSpecSource,
     pub root: UiNode,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<UiSpecWarning>,
 }
 
@@ -48,6 +50,7 @@ pub struct UiSpecSource {
 pub struct UiSpecWarning {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
 }
 
@@ -57,8 +60,14 @@ pub struct UiNode {
     pub id: String,
     pub name: String,
     pub kind: UiNodeKind,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub layout: UiLayout,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub style: UiStyle,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UiNode>,
 }
 
@@ -114,7 +123,10 @@ pub enum UiLayoutStrategy {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiStyle {
+    #[serde(default = "default_opacity")]
+    #[serde(skip_serializing_if = "is_default_opacity")]
     pub opacity: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub corner_radius: Option<f32>,
 }
 
@@ -125,6 +137,18 @@ impl Default for UiStyle {
             corner_radius: None,
         }
     }
+}
+
+fn default_opacity() -> f32 {
+    1.0
+}
+
+fn is_default_opacity(value: &f32) -> bool {
+    (*value - 1.0).abs() <= f32::EPSILON
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    value == &T::default()
 }
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
@@ -355,6 +379,61 @@ mod tests {
                 .map(|node| node.id.clone())
                 .collect::<Vec<_>>(),
             vec!["2:1".to_string(), "3:1".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_fields_are_omitted_and_missing_empty_fields_deserialize() {
+        let encoded_default = serde_json::to_value(UiSpec::default()).unwrap();
+        let object = encoded_default
+            .as_object()
+            .expect("ui spec should serialize as an object");
+        assert!(
+            !object.contains_key("warnings"),
+            "warnings should be omitted when empty"
+        );
+        let root = object
+            .get("root")
+            .and_then(serde_json::Value::as_object)
+            .expect("root should serialize as object");
+        assert!(
+            !root.contains_key("children"),
+            "children should be omitted when empty"
+        );
+
+        let decoded: UiSpec = serde_json::from_str(
+            r#"{
+                "spec_version": "1.0",
+                "source": {
+                    "file_key": "abc123",
+                    "root_node_id": "1:1",
+                    "generator_version": "0.1.0"
+                },
+                "root": {
+                    "id": "1:1",
+                    "name": "Root",
+                    "kind": "container",
+                    "layout": {
+                        "strategy": "absolute",
+                        "item_spacing": 0.0
+                    },
+                    "style": {}
+                }
+            }"#,
+        )
+        .expect("ui spec should deserialize when empty fields are omitted");
+
+        assert!(decoded.warnings.is_empty());
+        assert!(decoded.root.children.is_empty());
+        assert_eq!(decoded.root.style.corner_radius, None);
+
+        let style = root
+            .get("style")
+            .and_then(serde_json::Value::as_object)
+            .expect("style should serialize as object");
+        assert!(
+            !style.contains_key("opacity"),
+            "opacity should be omitted when default"
         );
     }
 
