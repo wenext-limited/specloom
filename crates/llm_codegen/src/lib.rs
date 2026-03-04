@@ -100,7 +100,10 @@ pub fn generate_ui(request: &GenerateUiRequest) -> Result<GenerateUiResult, Gene
     );
     let response = reqwest::blocking::Client::new()
         .post(api_url)
-        .header("Authorization", format!("Bearer {}", request.api_key.trim()))
+        .header(
+            "Authorization",
+            format!("Bearer {}", request.api_key.trim()),
+        )
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "model": request.model.trim(),
@@ -167,7 +170,9 @@ Use the following bundle JSON as input context:\n{bundle_json}\n"
     )
 }
 
-fn parse_generated_files(response_json: &serde_json::Value) -> Result<Vec<GeneratedFile>, GenerateUiError> {
+fn parse_generated_files(
+    response_json: &serde_json::Value,
+) -> Result<Vec<GeneratedFile>, GenerateUiError> {
     if let Some(files_value) = response_json.get("files") {
         let payload = serde_json::from_value::<GeneratedFilesPayload>(serde_json::json!({
             "files": files_value
@@ -180,8 +185,8 @@ fn parse_generated_files(response_json: &serde_json::Value) -> Result<Vec<Genera
         .get("output_text")
         .and_then(serde_json::Value::as_str)
     {
-        let payload =
-            serde_json::from_str::<GeneratedFilesPayload>(output_text).map_err(GenerateUiError::Serialization)?;
+        let payload = serde_json::from_str::<GeneratedFilesPayload>(output_text)
+            .map_err(GenerateUiError::Serialization)?;
         return Ok(payload.files);
     }
 
@@ -195,8 +200,8 @@ fn parse_generated_files(response_json: &serde_json::Value) -> Result<Vec<Genera
         .and_then(|content| content.get("text"))
         .and_then(serde_json::Value::as_str);
     if let Some(output_text) = nested_output_text {
-        let payload =
-            serde_json::from_str::<GeneratedFilesPayload>(output_text).map_err(GenerateUiError::Serialization)?;
+        let payload = serde_json::from_str::<GeneratedFilesPayload>(output_text)
+            .map_err(GenerateUiError::Serialization)?;
         return Ok(payload.files);
     }
 

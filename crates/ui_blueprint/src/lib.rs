@@ -416,7 +416,10 @@ mod tests {
         assert_eq!(blueprint.document.root_node_id, "123:456");
         assert_eq!(blueprint.document.name, "Login");
         assert_eq!(blueprint.screens.len(), 1);
-        assert_eq!(blueprint.screens[0].root.layout.kind, BlueprintLayoutKind::StackV);
+        assert_eq!(
+            blueprint.screens[0].root.layout.kind,
+            BlueprintLayoutKind::StackV
+        );
         assert_eq!(blueprint.screens[0].root.layout.gap, Some(16.0));
         assert_eq!(blueprint.screens[0].root.children.len(), 1);
         assert_eq!(

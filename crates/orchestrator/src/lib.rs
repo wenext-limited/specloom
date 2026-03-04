@@ -1048,7 +1048,10 @@ mod tests {
         );
 
         let artifact_path = workspace_root.join("output/specs/ui_blueprint.yaml");
-        assert!(artifact_path.is_file(), "ui blueprint artifact should exist");
+        assert!(
+            artifact_path.is_file(),
+            "ui blueprint artifact should exist"
+        );
 
         let artifact =
             std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
