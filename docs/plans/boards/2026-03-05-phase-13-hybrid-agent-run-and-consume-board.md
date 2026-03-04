@@ -3,7 +3,7 @@
 **Phase ID:** `P13`
 **Goal:** Deliver strict-hybrid agent tooling with deterministic fuzzy node lookup and a default stateless run-and-consume CLI execution model.
 **Source Plan:** `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`
-**Last Updated:** `2026-03-05 03:28 CST`
+**Last Updated:** `2026-03-05 03:30 CST`
 
 ## Status Legend
 
@@ -20,7 +20,7 @@
 | [x] | P13-T3 | Add JSON contracts for agent context, search index, warnings, and trace | codex | P13-T2 | `crates/agent_context/src/lib.rs` | `cargo test -p agent_context` | `fb15fa1` | Started 2026-03-05 03:23 CST; completed 2026-03-05 03:23 CST; verified `cargo test -p agent_context` |
 | [x] | P13-T4 | Implement deterministic fuzzy ranking + thresholds in `agent_context` | codex | P13-T3 | `crates/agent_context/src/lib.rs`, `crates/agent_context/src/search.rs` | `cargo test -p agent_context` | `f8d2dd8` | Started 2026-03-05 03:24 CST; completed 2026-03-05 03:26 CST; verified `cargo test -p agent_context` |
 | [x] | P13-T5 | Add live Figma node screenshot fetch API | codex | P13-T1 | `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | `467d553` | Started 2026-03-05 03:27 CST; completed 2026-03-05 03:28 CST; verified `cargo test -p figma_client` |
-| [~] | P13-T6 | Add `build-agent-context` stage and artifact emission | codex | P13-T3,P13-T4 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Started 2026-03-05 03:29 CST |
+| [x] | P13-T6 | Add `build-agent-context` stage and artifact emission | codex | P13-T3,P13-T4 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | `164f531` | Started 2026-03-05 03:29 CST; completed 2026-03-05 03:30 CST; verified `cargo test -p orchestrator` |
 | [ ] | P13-T7 | Expose orchestrator lookup tool APIs (`find_nodes`, `get_node_info`) | unassigned | P13-T6 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Explicit statuses: ok/no_match/ambiguous/not_found |
 | [ ] | P13-T8 | Add CLI `agent-tool` subcommands in stateless run-and-consume mode | unassigned | P13-T5,P13-T7 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | - | Must not require daemon/session server |
 | [ ] | P13-T9 | Add warning + trace artifact writers and playbook docs | unassigned | P13-T8 | `crates/orchestrator/src/lib.rs`, `docs/agent-playbook.md`, `README.md` | `cargo test -p orchestrator && cargo test -p cli` | - | Writes `output/reports/generation_warnings.json` and `output/reports/generation_trace.json` |
