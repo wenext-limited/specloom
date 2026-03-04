@@ -3,7 +3,7 @@
 **Phase ID:** `P14`
 **Goal:** Remove `infer-layout` from the active path and make `build-spec` agent-driven via `transform_plan.json` with explicit `child_policy`.
 **Source Plan:** `docs/plans/2026-03-05-agent-transform-build-spec.md`
-**Last Updated:** `2026-03-05 04:09 CST`
+**Last Updated:** `2026-03-05 04:11 CST`
 
 ## Status Legend
 
@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [~] | P14-T1 | Publish plan+board for `transform_plan` + `child_policy` contract | codex | - | `docs/plans/2026-03-05-agent-transform-build-spec.md`, `docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | `rg -n "transform_plan|child_policy|replace_with" docs/plans/2026-03-05-agent-transform-build-spec.md docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | - | Started 2026-03-05 04:09 CST |
+| [x] | P14-T1 | Publish plan+board for `transform_plan` + `child_policy` contract | codex | - | `docs/plans/2026-03-05-agent-transform-build-spec.md`, `docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | `rg -n "transform_plan|child_policy|replace_with" docs/plans/2026-03-05-agent-transform-build-spec.md docs/plans/boards/2026-03-05-phase-14-agent-transform-build-spec-board.md` | `cf512fd` | Started 2026-03-05 04:09 CST; completed 2026-03-05 04:11 CST; verification command passed |
 | [ ] | P14-T2 | Remove `infer-layout` from default orchestration and fixture expectations | unassigned | P14-T1 | `crates/orchestrator/src/lib.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs`, `crates/cli/tests/fixtures/generate_expected_output.json` | `cargo test -p orchestrator && cargo test -p cli` | - | Keep explicit compatibility decision for manual infer-layout invocation |
 | [ ] | P14-T3 | Emit `pre_layout.ron` and `node_map.json` during `build-spec` | unassigned | P14-T2 | `crates/orchestrator/src/lib.rs`, `crates/ui_spec/src/build.rs` | `cargo test -p orchestrator && cargo test -p ui_spec` | - | `node_map.json` keys must be deterministic |
 | [ ] | P14-T4 | Add transform plan contract with `child_policy` modes and validation | unassigned | P14-T3 | `crates/ui_spec/src/lib.rs`, `crates/ui_spec/src/transform_plan.rs`, `crates/ui_spec/src/tests.rs` | `cargo test -p ui_spec` | - | Modes: `keep`, `drop`, `replace_with` |
