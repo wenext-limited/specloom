@@ -1,0 +1,46 @@
+# Phase 12 Parallel Board: UI Blueprint and LLM Generation
+
+**Phase ID:** `P12`
+**Goal:** Add a deterministic `ui_blueprint.yaml` artifact and LLM-oriented UI generation tooling while preserving deterministic Rust pipeline stages.
+**Source Plan:** `docs/plans/2026-03-04-ui-blueprint-llm-generation.md`
+**Last Updated:** `2026-03-04 17:53 CST`
+
+## Status Legend
+
+- `[ ]` not started
+- `[~]` in progress
+- `[x]` completed
+
+## Task Board
+
+| Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| [ ] | P12-T1 | Create `ui_blueprint` crate with core YAML contract types | unassigned | - | `crates/ui_blueprint/Cargo.toml`, `crates/ui_blueprint/src/lib.rs` | `cargo test -p ui_blueprint` | - | Add contract root and round-trip tests |
+| [ ] | P12-T2 | Implement `ui_spec -> ui_blueprint` mapper with semantic layout names | unassigned | P12-T1 | `crates/ui_blueprint/Cargo.toml`, `crates/ui_blueprint/src/lib.rs` | `cargo test -p ui_blueprint build_blueprint_from_ui_spec_maps_root_layout_and_warnings -- --nocapture && cargo test -p ui_blueprint` | - | Use `stack_v`, `stack_h`, `overlay`, `absolute`, `scroll` |
+| [ ] | P12-T3 | Add deterministic YAML serialization API and stability tests | unassigned | P12-T2 | `crates/ui_blueprint/src/lib.rs` | `cargo test -p ui_blueprint to_yaml_is_stable_for_identical_blueprint -- --nocapture && cargo test -p ui_blueprint` | - | Ensure stable output for identical inputs |
+| [ ] | P12-T4 | Add `build-ui-blueprint` stage in orchestrator and default run order | unassigned | P12-T3 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator run_stage_build_ui_blueprint_writes_yaml_artifact -- --nocapture && cargo test -p orchestrator` | - | Keep `gen-swiftui` callable as legacy, remove from default `run_all` |
+| [ ] | P12-T5 | Expose Blueprint-first flow in CLI (`build-ui-blueprint` + generate output updates) | unassigned | P12-T4 | `crates/cli/src/main.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke generate_success_smoke -- --nocapture && cargo test -p cli` | - | Keep any legacy `gen-swiftui` command hidden/deprecated |
+| [ ] | P12-T6 | Create `llm_bundle` crate for deterministic bundle metadata and hashes | unassigned | P12-T3 | `crates/llm_bundle/Cargo.toml`, `crates/llm_bundle/src/lib.rs`, `output/llm/.gitkeep` | `cargo test -p llm_bundle` | - | Bundle includes blueprint hash, asset hash, warnings summary |
+| [ ] | P12-T7 | Add orchestrator `prepare-llm-bundle` stage | unassigned | P12-T4,P12-T6 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator prepare_llm_bundle -- --nocapture && cargo test -p orchestrator` | - | Write deterministic `output/llm/llm_bundle.json` |
+| [ ] | P12-T8 | Add CLI support/tests for `prepare-llm-bundle` | unassigned | P12-T7 | `crates/cli/src/main.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke prepare_llm_bundle_success_smoke -- --nocapture && cargo test -p cli` | - | Ensure deterministic artifact path output |
+| [ ] | P12-T9 | Create `llm_codegen` crate for direct model-based UI generation and run records | unassigned | P12-T6 | `crates/llm_codegen/Cargo.toml`, `crates/llm_codegen/src/lib.rs` | `cargo test -p llm_codegen` | - | Include request validation, mock-server parsing, file write tests |
+| [ ] | P12-T10 | Wire `generate-ui` command through orchestrator + CLI | unassigned | P12-T7,P12-T8,P12-T9 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs`, `crates/cli/src/main.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke generate_ui_requires_api_key -- --nocapture && cargo test -p orchestrator && cargo test -p cli` | - | Resolve API key from `--api-key` or `OPENAI_API_KEY` |
+| [ ] | P12-T11 | Update docs for UI Blueprint and LLM workflow | unassigned | P12-T5,P12-T8,P12-T10 | `README.md`, `docs/proposal.md`, `docs/plans/2026-03-04-figma-swiftui-generator.md` | `rg -n "ui_blueprint.yaml|build-ui-blueprint|prepare-llm-bundle|generate-ui" README.md docs/proposal.md docs/plans/2026-03-04-figma-swiftui-generator.md` | - | Keep docs aligned with new default stage order |
+| [ ] | P12-T12 | Phase verification, merge to `main`, and merged-main re-verification | unassigned | P12-T11 | `docs/plans/boards/2026-03-04-phase-12-ui-blueprint-llm-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge completed phase into `main`, then re-run full verification on merged `main` |
+
+## Parallelization Rules
+
+1. `P12-T4` and `P12-T6` can run in parallel after `P12-T3` because files do not overlap.
+2. `P12-T7` and `P12-T9` can run in parallel after their dependencies are met.
+3. CLI-heavy tasks `P12-T5`, `P12-T8`, and `P12-T10` must run sequentially because they share `crates/cli/src/main.rs` and `crates/cli/tests/integration_smoke.rs`.
+4. Orchestrator-heavy tasks `P12-T4`, `P12-T7`, and `P12-T10` must not be claimed concurrently.
+5. Do not mark any row `[x]` without task-level verification output and a commit hash.
+
+## Phase Exit Criteria
+
+1. Every task row is `[x]`.
+2. `cargo check --workspace` passes.
+3. `cargo test --workspace` passes.
+4. `bash scripts/verify_workspace.sh` passes.
+5. Phase branch is merged into `main`.
+6. Full verification is re-run on merged `main` and recorded in `P12-T12` notes.
