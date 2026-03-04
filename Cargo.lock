@@ -180,6 +180,8 @@ dependencies = [
  "figma_normalizer",
  "layout_infer",
  "serde_json",
+ "swiftui_ast",
+ "swiftui_codegen",
  "thiserror",
  "ui_spec",
 ]
@@ -266,6 +268,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+ "ui_spec",
 ]
 
 [[package]]

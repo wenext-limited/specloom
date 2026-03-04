@@ -8,5 +8,7 @@ figma_client = { path = "../figma_client" }
 figma_normalizer = { path = "../figma_normalizer" }
 layout_infer = { path = "../layout_infer" }
 serde_json = "1.0"
+swiftui_ast = { path = "../swiftui_ast" }
+swiftui_codegen = { path = "../swiftui_codegen" }
 thiserror = "2.0"
 ui_spec = { path = "../ui_spec" }

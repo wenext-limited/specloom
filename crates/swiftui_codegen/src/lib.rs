@@ -151,7 +151,9 @@ mod tests {
         let ast = SwiftUiAst {
             view_name: "GeneratedView".to_string(),
             root: SwiftUiNode {
-                kind: SwiftUiNodeKind::VStack { spacing: Some(12.0) },
+                kind: SwiftUiNodeKind::VStack {
+                    spacing: Some(12.0),
+                },
                 modifiers: vec![SwiftUiModifier::PaddingAll(16.0)],
                 children: vec![
                     SwiftUiNode {
@@ -190,7 +192,9 @@ mod tests {
         let ast = SwiftUiAst {
             view_name: "RepeatView".to_string(),
             root: SwiftUiNode {
-                kind: SwiftUiNodeKind::HStack { spacing: Some(10.0) },
+                kind: SwiftUiNodeKind::HStack {
+                    spacing: Some(10.0),
+                },
                 modifiers: vec![SwiftUiModifier::Opacity(1.0)],
                 children: vec![
                     SwiftUiNode {
