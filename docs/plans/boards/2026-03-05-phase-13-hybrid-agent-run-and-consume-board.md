@@ -3,7 +3,7 @@
 **Phase ID:** `P13`
 **Goal:** Deliver strict-hybrid agent tooling with deterministic fuzzy node lookup and a default stateless run-and-consume CLI execution model.
 **Source Plan:** `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`
-**Last Updated:** `2026-03-05 03:14 CST`
+**Last Updated:** `2026-03-05 03:16 CST`
 
 ## Status Legend
 
@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [~] | P13-T1 | Codify run-and-consume runtime model in approved design + implementation plan | codex | - | `docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md`, `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`, `docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | `rg -n "run-and-consume|daemon|background process" docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md docs/plans/2026-03-05-figma-hybrid-agent-generation.md docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | - | Started 2026-03-05 03:14 CST |
+| [x] | P13-T1 | Codify run-and-consume runtime model in approved design + implementation plan | codex | - | `docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md`, `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`, `docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | `rg -n "run-and-consume|daemon|background process" docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md docs/plans/2026-03-05-figma-hybrid-agent-generation.md docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | `3afd0b0` | Started 2026-03-05 03:14 CST; completed 2026-03-05 03:16 CST; verification command passed |
 | [ ] | P13-T2 | Create `agent_context` crate and workspace registration | unassigned | P13-T1 | `Cargo.toml`, `crates/agent_context/Cargo.toml`, `crates/agent_context/src/lib.rs` | `cargo test -p agent_context` | - | Scaffold only |
 | [ ] | P13-T3 | Add JSON contracts for agent context, search index, warnings, and trace | unassigned | P13-T2 | `crates/agent_context/src/lib.rs` | `cargo test -p agent_context` | - | Include serde round-trip tests |
 | [ ] | P13-T4 | Implement deterministic fuzzy ranking + thresholds in `agent_context` | unassigned | P13-T3 | `crates/agent_context/src/lib.rs`, `crates/agent_context/src/search.rs` | `cargo test -p agent_context` | - | Stable sort: score desc, node_id asc |
