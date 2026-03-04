@@ -3,7 +3,7 @@
 **Phase ID:** `P12`
 **Goal:** Add a deterministic `ui_blueprint.yaml` artifact and LLM-oriented UI generation tooling while preserving deterministic Rust pipeline stages.
 **Source Plan:** `docs/plans/2026-03-04-ui-blueprint-llm-generation.md`
-**Last Updated:** `2026-03-04 18:11 CST`
+**Last Updated:** `2026-03-04 18:14 CST`
 
 ## Status Legend
 
@@ -24,8 +24,8 @@
 | [x] | P12-T7 | Add orchestrator `prepare-llm-bundle` stage | codex | P12-T4,P12-T6 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator prepare_llm_bundle -- --nocapture && cargo test -p orchestrator` | `97a742a` | Started 2026-03-04 18:05 CST; added stage execution, warning summary extraction, deterministic bundle artifact writing, and passing tests |
 | [x] | P12-T8 | Add CLI support/tests for `prepare-llm-bundle` | codex | P12-T7 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke prepare_llm_bundle_success_smoke -- --nocapture && cargo test -p cli` | `da6d757` | Started 2026-03-04 18:07 CST; added top-level command alias and run-stage smoke coverage for `prepare-llm-bundle` |
 | [x] | P12-T9 | Create `llm_codegen` crate for direct model-based UI generation and run records | codex | P12-T6 | `Cargo.toml`, `crates/llm_codegen/Cargo.toml`, `crates/llm_codegen/src/lib.rs` | `cargo test -p llm_codegen` | `6a93212` | Started 2026-03-04 18:09 CST; added direct model-generation crate with validation, mock transport parsing, file output, and run-record persistence |
-| [~] | P12-T10 | Wire `generate-ui` command through orchestrator + CLI | codex | P12-T7,P12-T8,P12-T9 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs`, `crates/cli/src/main.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke generate_ui_requires_api_key -- --nocapture && cargo test -p orchestrator && cargo test -p cli` | - | Started 2026-03-04 18:11 CST; wiring end-to-end CLI/orchestrator handoff to `llm_codegen` |
-| [ ] | P12-T11 | Update docs for UI Blueprint and LLM workflow | unassigned | P12-T5,P12-T8,P12-T10 | `README.md`, `docs/proposal.md`, `docs/plans/2026-03-04-figma-swiftui-generator.md` | `rg -n "ui_blueprint.yaml|build-ui-blueprint|prepare-llm-bundle|generate-ui" README.md docs/proposal.md docs/plans/2026-03-04-figma-swiftui-generator.md` | - | Keep docs aligned with new default stage order |
+| [x] | P12-T10 | Wire `generate-ui` command through orchestrator + CLI | codex | P12-T7,P12-T8,P12-T9 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs`, `crates/cli/src/main.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli --test integration_smoke generate_ui_requires_api_key -- --nocapture && cargo test -p orchestrator && cargo test -p cli` | `5f012b0` | Started 2026-03-04 18:11 CST; wired orchestrator/CLI `generate-ui` flow with API key env fallback and passing integration/workspace tests |
+| [~] | P12-T11 | Update docs for UI Blueprint and LLM workflow | codex | P12-T5,P12-T8,P12-T10 | `README.md`, `docs/proposal.md`, `docs/plans/2026-03-04-figma-swiftui-generator.md` | `rg -n "ui_blueprint.yaml|build-ui-blueprint|prepare-llm-bundle|generate-ui" README.md docs/proposal.md docs/plans/2026-03-04-figma-swiftui-generator.md` | - | Started 2026-03-04 18:14 CST; updating docs for Blueprint artifacts and LLM command flow |
 | [ ] | P12-T12 | Phase verification, merge to `main`, and merged-main re-verification | unassigned | P12-T11 | `docs/plans/boards/2026-03-04-phase-12-ui-blueprint-llm-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge completed phase into `main`, then re-run full verification on merged `main` |
 
 ## Parallelization Rules
