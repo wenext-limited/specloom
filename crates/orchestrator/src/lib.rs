@@ -18,6 +18,8 @@ pub enum PipelineError {
     MissingInputArtifact(String),
     #[error("normalizer error: {0}")]
     Normalizer(String),
+    #[error("ui spec build error: {0}")]
+    UiSpecBuild(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,8 @@ pub struct StageExecutionResult {
 
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
+const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
+const SPEC_ARTIFACT_RELATIVE_PATH: &str = "output/specs/ui_spec.json";
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
 const FETCH_FIXTURE_JSON: &str = r#"{
@@ -106,6 +110,8 @@ pub fn run_stage_in_workspace(
     let artifact_path = match stage.name {
         "fetch" => Some(run_fetch_stage(workspace_root)?),
         "normalize" => Some(run_normalize_stage(workspace_root)?),
+        "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
+        "build-spec" => Some(run_build_spec_stage(workspace_root)?),
         _ => None,
     };
 
@@ -161,6 +167,63 @@ fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
     Ok(NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string())
 }
 
+fn run_infer_layout_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
+    if !normalized_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let normalized_artifact = std::fs::read_to_string(&normalized_path).map_err(io_error)?;
+    let normalized: figma_normalizer::NormalizationOutput =
+        serde_json::from_str(&normalized_artifact).map_err(serialization_error)?;
+    let inferred = layout_infer::infer_layout(&normalized.document);
+
+    let inferred_path = workspace_root.join(INFERRED_ARTIFACT_RELATIVE_PATH);
+    if let Some(parent) = inferred_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let encoded = serde_json::to_string_pretty(&inferred).map_err(serialization_error)?;
+    std::fs::write(&inferred_path, format!("{encoded}\n")).map_err(io_error)?;
+
+    Ok(INFERRED_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
+fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> {
+    let normalized_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
+    if !normalized_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            NORMALIZED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+    let inferred_path = workspace_root.join(INFERRED_ARTIFACT_RELATIVE_PATH);
+    if !inferred_path.is_file() {
+        return Err(PipelineError::MissingInputArtifact(
+            INFERRED_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let normalized_artifact = std::fs::read_to_string(&normalized_path).map_err(io_error)?;
+    let normalized: figma_normalizer::NormalizationOutput =
+        serde_json::from_str(&normalized_artifact).map_err(serialization_error)?;
+
+    let inferred_artifact = std::fs::read_to_string(&inferred_path).map_err(io_error)?;
+    let inferred: layout_infer::InferredLayoutDocument =
+        serde_json::from_str(&inferred_artifact).map_err(serialization_error)?;
+
+    let spec = ui_spec::build_ui_spec(&normalized, &inferred).map_err(ui_spec_build_error)?;
+
+    let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
+    if let Some(parent) = spec_path.parent() {
+        std::fs::create_dir_all(parent).map_err(io_error)?;
+    }
+    let encoded = serde_json::to_string_pretty(&spec).map_err(serialization_error)?;
+    std::fs::write(&spec_path, format!("{encoded}\n")).map_err(io_error)?;
+
+    Ok(SPEC_ARTIFACT_RELATIVE_PATH.to_string())
+}
+
 fn io_error(err: std::io::Error) -> PipelineError {
     PipelineError::Io(err.to_string())
 }
@@ -175,6 +238,10 @@ fn fetch_error(err: figma_client::FetchClientError) -> PipelineError {
 
 fn normalizer_error(err: figma_normalizer::NormalizationError) -> PipelineError {
     PipelineError::Normalizer(err.to_string())
+}
+
+fn ui_spec_build_error(err: ui_spec::UiSpecBuildError) -> PipelineError {
+    PipelineError::UiSpecBuild(err.to_string())
 }
 
 #[cfg(test)]
@@ -223,12 +290,12 @@ mod tests {
 
     #[test]
     fn run_stage_returns_execution_result_for_known_stage() {
-        let result = run_stage("infer-layout").expect("known stage should run");
+        let result = run_stage("report").expect("known stage should run");
         assert_eq!(
             result,
             StageExecutionResult {
-                stage_name: "infer-layout",
-                output_dir: "output/inferred",
+                stage_name: "report",
+                output_dir: "output/reports",
                 artifact_path: None,
             }
         );
@@ -313,6 +380,79 @@ mod tests {
             err,
             PipelineError::MissingInputArtifact("output/raw/fetch_snapshot.json".to_string())
         );
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_infer_layout_writes_inferred_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_infer_layout_writes_inferred_artifact");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run first");
+        let result = run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "infer-layout",
+                output_dir: "output/inferred",
+                artifact_path: Some("output/inferred/layout_inference.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/inferred/layout_inference.json");
+        assert!(artifact_path.is_file(), "inferred artifact should exist");
+
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let inferred: layout_infer::InferredLayoutDocument =
+            serde_json::from_str(&artifact).expect("artifact should be valid inferred json");
+        assert_eq!(
+            inferred.inference_version,
+            layout_infer::LAYOUT_DECISION_VERSION
+        );
+        assert_eq!(inferred.source_file_key, "fixture-file-key");
+        assert_eq!(inferred.root_node_id, "0:1");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_build_spec_writes_spec_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_build_spec_writes_spec_artifact");
+
+        run_stage_in_workspace("fetch", workspace_root.as_path()).expect("fetch should run first");
+        run_stage_in_workspace("normalize", workspace_root.as_path())
+            .expect("normalize should run first");
+        run_stage_in_workspace("infer-layout", workspace_root.as_path())
+            .expect("infer-layout should run first");
+        let result = run_stage_in_workspace("build-spec", workspace_root.as_path())
+            .expect("build-spec should run");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "build-spec",
+                output_dir: "output/specs",
+                artifact_path: Some("output/specs/ui_spec.json".to_string()),
+            }
+        );
+
+        let artifact_path = workspace_root.join("output/specs/ui_spec.json");
+        assert!(artifact_path.is_file(), "ui spec artifact should exist");
+
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let spec: ui_spec::UiSpec =
+            serde_json::from_str(&artifact).expect("artifact should be valid ui spec json");
+        assert_eq!(spec.spec_version, ui_spec::UI_SPEC_VERSION);
+        assert_eq!(spec.source.file_key, "fixture-file-key");
+        assert_eq!(spec.source.root_node_id, "0:1");
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }

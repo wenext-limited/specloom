@@ -15,11 +15,11 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [ ] | P7-T1 | Implement deterministic layout heuristics | unassigned | - | `crates/layout_infer/src/lib.rs` | `cargo test -p layout_infer` | - | Rules-first strategy selection |
-| [ ] | P7-T2 | Expand UI spec tree contracts | unassigned | - | `crates/ui_spec/src/lib.rs` | `cargo test -p ui_spec` | - | Versioned root plus child tree |
-| [ ] | P7-T3 | Build spec from normalized + inferred inputs | unassigned | P7-T1,P7-T2 | `crates/ui_spec/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p ui_spec && cargo test -p orchestrator` | - | Write `output/specs/*.json` |
-| [ ] | P7-T4 | Map inference warnings into review warning types | unassigned | P7-T1 | `crates/review_report/src/lib.rs`, `crates/layout_infer/src/lib.rs` | `cargo test -p review_report && cargo test -p layout_infer` | - | Preserve severity/category semantics |
-| [ ] | P7-T5 | Phase verification and closeout | unassigned | P7-T3,P7-T4 | `docs/plans/boards/2026-03-04-phase-07-infer-spec-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | - | Merge phase to `main` after pass |
+| [x] | P7-T1 | Implement deterministic layout heuristics | codex | - | `crates/layout_infer/src/lib.rs` | `cargo test -p layout_infer` | `8e9955f` | Started 2026-03-04 15:25 CST; added rules-first metadata/geometry inference with deterministic decisions and warnings |
+| [x] | P7-T2 | Expand UI spec tree contracts | codex | - | `crates/ui_spec/src/lib.rs` | `cargo test -p ui_spec` | `30ba1e7` | Expanded spec root/source/node/warning contracts with deterministic child ordering |
+| [x] | P7-T3 | Build spec from normalized + inferred inputs | codex | P7-T1,P7-T2 | `crates/ui_spec/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p ui_spec && cargo test -p orchestrator` | `b1db0a8` | Started 2026-03-04 15:35 CST; infer + build-spec stages now write deterministic inferred/spec artifacts |
+| [x] | P7-T4 | Map inference warnings into review warning types | codex | P7-T1 | `crates/review_report/src/lib.rs`, `crates/layout_infer/src/lib.rs` | `cargo test -p review_report && cargo test -p layout_infer` | `42f3884` | Started 2026-03-04 15:39 CST; added deterministic mapping from inference warnings to review categories/severities |
+| [x] | P7-T5 | Phase verification and closeout | codex | P7-T3,P7-T4 | `docs/plans/boards/2026-03-04-phase-07-infer-spec-board.md` | `cargo check --workspace && cargo test --workspace && bash scripts/verify_workspace.sh` | `c0fec91` | Started 2026-03-04 15:42 CST; phase verification passed and branch is ready to merge |
 
 ## Parallelization Rules
 
