@@ -200,6 +200,7 @@ fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
                 .fills
                 .iter()
                 .any(|fill| fill.kind == figma_normalizer::PaintKind::Image);
+
             if has_image_fill {
                 NodeType::Image
             } else {

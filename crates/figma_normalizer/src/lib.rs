@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 pub const NORMALIZED_SCHEMA_VERSION: &str = "1.0";
 pub const FIGMA_API_VERSION: &str = "v1";
@@ -81,6 +81,7 @@ fn normalize_node(
     );
     let visible = node.get("visible").and_then(Value::as_bool).unwrap_or(true);
     let bounds = parse_bounds(node.get("absoluteBoundingBox"))?;
+    let style = parse_style(node)?;
     let passthrough_fields = collect_passthrough_fields(node);
 
     let node_index = nodes.len();
@@ -93,7 +94,7 @@ fn normalize_node(
         bounds,
         layout: None,
         constraints: None,
-        style: default_style(),
+        style,
         component: default_component(),
         passthrough_fields,
         children: Vec::new(),
@@ -169,6 +170,101 @@ fn parse_bounds(bounds_value: Option<&Value>) -> Result<Bounds, NormalizationErr
         y: required_f32(object, "y", "node.absoluteBoundingBox.y")?,
         w: required_f32(object, "width", "node.absoluteBoundingBox.width")?,
         h: required_f32(object, "height", "node.absoluteBoundingBox.height")?,
+    })
+}
+
+fn parse_style(node: &Map<String, Value>) -> Result<NodeStyle, NormalizationError> {
+    let mut style = default_style();
+
+    let Some(fills) = node.get("fills") else {
+        return Ok(style);
+    };
+
+    style.fills = parse_fills(fills)?;
+
+    Ok(style)
+}
+
+fn parse_fills(fills_value: &Value) -> Result<Vec<Paint>, NormalizationError> {
+    let fills = fills_value.as_array().ok_or_else(|| {
+        NormalizationError::InvalidPayloadField("node.style.fills must be an array".to_string())
+    })?;
+
+    fills
+        .iter()
+        .map(parse_fill)
+        .collect::<Result<Vec<_>, NormalizationError>>()
+}
+
+fn parse_fill(fill_value: &Value) -> Result<Paint, NormalizationError> {
+    let fill = fill_value.as_object().ok_or_else(|| {
+        NormalizationError::InvalidPayloadField("node.style.fills[] must be an object".to_string())
+    })?;
+
+    let kind = fill
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            NormalizationError::InvalidPayloadField(
+                "node.style.fills[].type must be a string".to_string(),
+            )
+        })
+        .and_then(parse_paint_kind)?;
+
+    let color = match kind {
+        PaintKind::Solid => fill
+            .get("color")
+            .map(parse_color)
+            .transpose()?
+            .map(|mut color| {
+                if let Some(opacity) = fill.get("opacity").and_then(Value::as_f64) {
+                    color.a *= opacity as f32;
+                }
+                color
+            }),
+        _ => None,
+    };
+
+    let image_ref = match kind {
+        PaintKind::Image => fill
+            .get("imageRef")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        _ => None,
+    };
+
+    Ok(Paint {
+        kind,
+        color,
+        image_ref,
+    })
+}
+
+fn parse_paint_kind(kind: &str) -> Result<PaintKind, NormalizationError> {
+    match kind {
+        "SOLID" => Ok(PaintKind::Solid),
+        "IMAGE" => Ok(PaintKind::Image),
+        "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" | "GRADIENT_DIAMOND" => {
+            Ok(PaintKind::Gradient)
+        }
+        _ => Err(NormalizationError::InvalidPayloadField(format!(
+            "unsupported node.style.fills[].type: {kind}"
+        ))),
+    }
+}
+
+fn parse_color(color_value: &Value) -> Result<Color, NormalizationError> {
+    let color = color_value.as_object().ok_or_else(|| {
+        NormalizationError::InvalidPayloadField(
+            "node.style.fills[].color must be an object".to_string(),
+        )
+    })?;
+
+    Ok(Color {
+        r: required_f32(color, "r", "node.style.fills[].color.r")?,
+        g: required_f32(color, "g", "node.style.fills[].color.g")?,
+        b: required_f32(color, "b", "node.style.fills[].color.b")?,
+        a: required_f32(color, "a", "node.style.fills[].color.a")?,
     })
 }
 
@@ -746,6 +842,93 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("missing required payload field: document")
+        );
+    }
+
+    #[test]
+    fn parse_style_maps_fills() {
+        let style = parse_style(
+            serde_json::json!({
+                "fills": [
+                    {
+                        "type": "SOLID",
+                        "color": { "r": 0.2, "g": 0.4, "b": 0.6, "a": 0.8 },
+                        "opacity": 0.5
+                    },
+                    {
+                        "type": "IMAGE",
+                        "imageRef": "img-ref-1"
+                    },
+                    {
+                        "type": "GRADIENT_LINEAR"
+                    }
+                ]
+            })
+            .as_object()
+            .unwrap(),
+        )
+        .expect("style should parse");
+
+        assert_eq!(
+            style.fills,
+            vec![
+                Paint {
+                    kind: PaintKind::Solid,
+                    color: Some(Color {
+                        r: 0.2,
+                        g: 0.4,
+                        b: 0.6,
+                        a: 0.4,
+                    }),
+                    image_ref: None,
+                },
+                Paint {
+                    kind: PaintKind::Image,
+                    color: None,
+                    image_ref: Some("img-ref-1".to_string()),
+                },
+                Paint {
+                    kind: PaintKind::Gradient,
+                    color: None,
+                    image_ref: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_style_rejects_non_array_fills() {
+        let err = parse_style(
+            serde_json::json!({
+                "fills": { "type": "SOLID" }
+            })
+            .as_object()
+            .unwrap(),
+        )
+        .expect_err("fills object should be rejected");
+
+        assert!(
+            err.to_string()
+                .contains("node.style.fills must be an array")
+        );
+    }
+
+    #[test]
+    fn parse_style_rejects_unsupported_fill_type() {
+        let err = parse_style(
+            serde_json::json!({
+                "fills": [
+                    { "type": "EMOJI" }
+                ]
+            })
+            .as_object()
+            .unwrap(),
+        )
+        .expect_err("unsupported paint type should be rejected");
+
+        assert!(
+            err.to_string()
+                .contains("unsupported node.style.fills[].type: EMOJI")
         );
     }
 
