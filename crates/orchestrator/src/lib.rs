@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+#[derive(Debug, thiserror::Error)]
+pub enum PipelineError {
+    #[error("unsupported feature: {0}")]
+    UnsupportedFeature(String),
+}
+
 pub fn pipeline_stage_names() -> Vec<&'static str> {
     vec![
         "fetch",
@@ -31,5 +37,11 @@ mod tests {
                 "report",
             ]
         );
+    }
+
+    #[test]
+    fn unsupported_feature_is_classified() {
+        let err = PipelineError::UnsupportedFeature("mask".to_string());
+        assert!(err.to_string().contains("unsupported"));
     }
 }
