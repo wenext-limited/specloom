@@ -178,8 +178,10 @@ version = "0.1.0"
 dependencies = [
  "figma_client",
  "figma_normalizer",
+ "layout_infer",
  "serde_json",
  "thiserror",
+ "ui_spec",
 ]
 
 [[package]]
@@ -304,8 +306,11 @@ dependencies = [
 name = "ui_spec"
 version = "0.1.0"
 dependencies = [
+ "figma_normalizer",
+ "layout_infer",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
