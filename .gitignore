@@ -1,12 +1,6 @@
 .DS_Store
 .vscode/
 .worktrees/
-docs/plans/*
-!docs/plans/boards/
-!docs/plans/boards/**
-!docs/plans/templates/
-!docs/plans/templates/**
-
 # Rust
 target/
 
