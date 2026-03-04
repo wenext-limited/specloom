@@ -3,7 +3,7 @@
 **Phase ID:** `P13`
 **Goal:** Deliver strict-hybrid agent tooling with deterministic fuzzy node lookup and a default stateless run-and-consume CLI execution model.
 **Source Plan:** `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`
-**Last Updated:** `2026-03-05 03:23 CST`
+**Last Updated:** `2026-03-05 03:26 CST`
 
 ## Status Legend
 
@@ -18,7 +18,7 @@
 | [x] | P13-T1 | Codify run-and-consume runtime model in approved design + implementation plan | codex | - | `docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md`, `docs/plans/2026-03-05-figma-hybrid-agent-generation.md`, `docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | `rg -n "run-and-consume|daemon|background process" docs/plans/2026-03-05-figma-hybrid-agent-generation-design.md docs/plans/2026-03-05-figma-hybrid-agent-generation.md docs/plans/boards/2026-03-05-phase-13-hybrid-agent-run-and-consume-board.md` | `3afd0b0` | Started 2026-03-05 03:14 CST; completed 2026-03-05 03:16 CST; verification command passed |
 | [x] | P13-T2 | Create `agent_context` crate and workspace registration | codex | P13-T1 | `Cargo.toml`, `crates/agent_context/Cargo.toml`, `crates/agent_context/src/lib.rs` | `cargo test -p agent_context` | `27668aa` | Started 2026-03-05 03:18 CST; completed 2026-03-05 03:22 CST; verified `cargo test -p agent_context` |
 | [x] | P13-T3 | Add JSON contracts for agent context, search index, warnings, and trace | codex | P13-T2 | `crates/agent_context/src/lib.rs` | `cargo test -p agent_context` | `fb15fa1` | Started 2026-03-05 03:23 CST; completed 2026-03-05 03:23 CST; verified `cargo test -p agent_context` |
-| [~] | P13-T4 | Implement deterministic fuzzy ranking + thresholds in `agent_context` | codex | P13-T3 | `crates/agent_context/src/lib.rs`, `crates/agent_context/src/search.rs` | `cargo test -p agent_context` | - | Started 2026-03-05 03:24 CST |
+| [x] | P13-T4 | Implement deterministic fuzzy ranking + thresholds in `agent_context` | codex | P13-T3 | `crates/agent_context/src/lib.rs`, `crates/agent_context/src/search.rs` | `cargo test -p agent_context` | `f8d2dd8` | Started 2026-03-05 03:24 CST; completed 2026-03-05 03:26 CST; verified `cargo test -p agent_context` |
 | [ ] | P13-T5 | Add live Figma node screenshot fetch API | unassigned | P13-T1 | `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | - | `/v1/images/<file_key>?ids=<node_id>&format=png` |
 | [ ] | P13-T6 | Add `build-agent-context` stage and artifact emission | unassigned | P13-T3,P13-T4 | `crates/orchestrator/Cargo.toml`, `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Emits `output/agent/agent_context.json` + `output/agent/search_index.json` |
 | [ ] | P13-T7 | Expose orchestrator lookup tool APIs (`find_nodes`, `get_node_info`) | unassigned | P13-T6 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Explicit statuses: ok/no_match/ambiguous/not_found |
