@@ -36,7 +36,7 @@ pub struct ReviewWarning {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewWarningCategory {
@@ -47,13 +47,26 @@ pub enum ReviewWarningCategory {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewWarningSeverity {
     Low,
     Medium,
     High,
+}
+
+impl ReviewWarningCategory {
+    pub const ALL: [Self; 4] = [
+        Self::UnsupportedFeature,
+        Self::LowConfidenceLayout,
+        Self::FallbackApplied,
+        Self::DataLossRisk,
+    ];
+}
+
+impl ReviewWarningSeverity {
+    pub const ALL: [Self; 3] = [Self::Low, Self::Medium, Self::High];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -65,12 +78,24 @@ pub struct ReviewSummary {
 
 impl ReviewSummary {
     fn from_warnings(warnings: &[ReviewWarning]) -> Self {
-        let mut by_category = BTreeMap::new();
-        let mut by_severity = BTreeMap::new();
+        let mut by_category = ReviewWarningCategory::ALL
+            .into_iter()
+            .map(|category| (category, 0))
+            .collect::<BTreeMap<_, _>>();
+        let mut by_severity = ReviewWarningSeverity::ALL
+            .into_iter()
+            .map(|severity| (severity, 0))
+            .collect::<BTreeMap<_, _>>();
 
         for warning in warnings {
-            *by_category.entry(warning.category.clone()).or_insert(0) += 1;
-            *by_severity.entry(warning.severity.clone()).or_insert(0) += 1;
+            let category_count = by_category
+                .get_mut(&warning.category)
+                .expect("every warning category must be initialized");
+            *category_count += 1;
+            let severity_count = by_severity
+                .get_mut(&warning.severity)
+                .expect("every warning severity must be initialized");
+            *severity_count += 1;
         }
 
         Self {
@@ -150,6 +175,77 @@ mod tests {
                 .get(&ReviewWarningSeverity::Medium),
             Some(&2)
         );
+    }
+
+    #[test]
+    fn summary_includes_zero_counts_for_all_categories_and_severities() {
+        let report = ReviewReport::from_warnings(vec![sample_warning(
+            "LOW_CONFIDENCE_LAYOUT",
+            ReviewWarningCategory::LowConfidenceLayout,
+            ReviewWarningSeverity::Medium,
+            Some("18:3"),
+        )]);
+
+        assert_eq!(report.summary.by_category.len(), 4);
+        assert_eq!(
+            report
+                .summary
+                .by_category
+                .get(&ReviewWarningCategory::UnsupportedFeature),
+            Some(&0)
+        );
+        assert_eq!(
+            report
+                .summary
+                .by_category
+                .get(&ReviewWarningCategory::LowConfidenceLayout),
+            Some(&1)
+        );
+        assert_eq!(
+            report
+                .summary
+                .by_category
+                .get(&ReviewWarningCategory::FallbackApplied),
+            Some(&0)
+        );
+        assert_eq!(
+            report
+                .summary
+                .by_category
+                .get(&ReviewWarningCategory::DataLossRisk),
+            Some(&0)
+        );
+
+        assert_eq!(report.summary.by_severity.len(), 3);
+        assert_eq!(
+            report.summary.by_severity.get(&ReviewWarningSeverity::Low),
+            Some(&0)
+        );
+        assert_eq!(
+            report
+                .summary
+                .by_severity
+                .get(&ReviewWarningSeverity::Medium),
+            Some(&1)
+        );
+        assert_eq!(
+            report.summary.by_severity.get(&ReviewWarningSeverity::High),
+            Some(&0)
+        );
+    }
+
+    #[test]
+    fn warning_contract_values_are_stable_snake_case() {
+        let category_json =
+            serde_json::to_string(&ReviewWarningCategory::LowConfidenceLayout).unwrap();
+        assert_eq!(category_json, "\"low_confidence_layout\"");
+        let category: ReviewWarningCategory = serde_json::from_str(&category_json).unwrap();
+        assert_eq!(category, ReviewWarningCategory::LowConfidenceLayout);
+
+        let severity_json = serde_json::to_string(&ReviewWarningSeverity::Medium).unwrap();
+        assert_eq!(severity_json, "\"medium\"");
+        let severity: ReviewWarningSeverity = serde_json::from_str(&severity_json).unwrap();
+        assert_eq!(severity, ReviewWarningSeverity::Medium);
     }
 
     fn sample_warning(
