@@ -3,7 +3,7 @@
 **Phase ID:** `P11`
 **Goal:** Add live Figma API/auth fetch support for real end-to-end pipeline runs.
 **Source Plan:** `docs/plans/2026-03-04-live-figma-auth-fetch-implementation.md`
-**Last Updated:** `2026-03-04 16:34 CST`
+**Last Updated:** `2026-03-04 16:36 CST`
 
 ## Status Legend
 
@@ -17,7 +17,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [x] | P11-T1 | Add live fetch request/auth contracts | codex | - | `crates/figma_client/src/lib.rs`, `crates/figma_client/Cargo.toml` | `cargo test -p figma_client` | `92fab1c` | Started 2026-03-04 16:32 CST; added live request/auth contract types and explicit live fetch error variants |
 | [x] | P11-T2 | Implement live Figma API node fetch | codex | P11-T1 | `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | `d99cf5f` | Started 2026-03-04 16:34 CST; implemented live fetch transport and mapping into canonical raw snapshot payload |
-| [ ] | P11-T3 | Add live transport tests with mock server | unassigned | P11-T2 | `crates/figma_client/Cargo.toml`, `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | - | Cover success + auth/error mapping without external network |
+| [~] | P11-T3 | Add live transport tests with mock server | codex | P11-T2 | `crates/figma_client/Cargo.toml`, `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | - | Started 2026-03-04 16:36 CST; adding mock HTTP transport coverage for auth header, path/query, and status mapping |
 | [ ] | P11-T4 | Add orchestrator fetch config + live execution | unassigned | P11-T3 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Add config-based stage/run-all entrypoints for fixture vs live |
 | [ ] | P11-T5 | Harden orchestrator live fetch actionable errors | unassigned | P11-T4 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Improve guidance for auth/token/file/node failures |
 | [ ] | P11-T6 | Expose live fetch options in CLI | unassigned | P11-T5 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p cli` | - | Add `--input`, `--file-key`, `--node-id`, `--figma-token` for `fetch`/`generate` |
