@@ -29,7 +29,7 @@ Key docs:
 - `docs/commit-style.md`
 - `docs/plans/boards/README.md`
 - `docs/plans/templates/parallel-phase-board-template.md`
-- `.codex/skills/parallel-phase-workflow/SKILL.md`
+- `.codex/SKILLS.md`
 
 ## Agent Workflow
 
