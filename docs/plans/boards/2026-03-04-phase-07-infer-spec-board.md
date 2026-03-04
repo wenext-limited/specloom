@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [~] | P7-T1 | Implement deterministic layout heuristics | codex | - | `crates/layout_infer/src/lib.rs` | `cargo test -p layout_infer` | - | Started 2026-03-04 15:25 CST; rules-first strategy selection in progress |
+| [x] | P7-T1 | Implement deterministic layout heuristics | codex | - | `crates/layout_infer/src/lib.rs` | `cargo test -p layout_infer` | `8e9955f` | Started 2026-03-04 15:25 CST; added rules-first metadata/geometry inference with deterministic decisions and warnings |
 | [ ] | P7-T2 | Expand UI spec tree contracts | unassigned | - | `crates/ui_spec/src/lib.rs` | `cargo test -p ui_spec` | - | Versioned root plus child tree |
 | [ ] | P7-T3 | Build spec from normalized + inferred inputs | unassigned | P7-T1,P7-T2 | `crates/ui_spec/src/lib.rs`, `crates/orchestrator/src/lib.rs` | `cargo test -p ui_spec && cargo test -p orchestrator` | - | Write `output/specs/*.json` |
 | [ ] | P7-T4 | Map inference warnings into review warning types | unassigned | P7-T1 | `crates/review_report/src/lib.rs`, `crates/layout_infer/src/lib.rs` | `cargo test -p review_report && cargo test -p layout_infer` | - | Preserve severity/category semantics |
