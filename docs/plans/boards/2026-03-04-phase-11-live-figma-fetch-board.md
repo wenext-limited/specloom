@@ -3,7 +3,7 @@
 **Phase ID:** `P11`
 **Goal:** Add live Figma API/auth fetch support for real end-to-end pipeline runs.
 **Source Plan:** `docs/plans/2026-03-04-live-figma-auth-fetch-implementation.md`
-**Last Updated:** `2026-03-04 16:40 CST`
+**Last Updated:** `2026-03-04 16:32 CST`
 
 ## Status Legend
 
@@ -15,7 +15,7 @@
 
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [ ] | P11-T1 | Add live fetch request/auth contracts | unassigned | - | `crates/figma_client/src/lib.rs`, `crates/figma_client/Cargo.toml` | `cargo test -p figma_client` | - | Add typed live fetch inputs and explicit auth/transport errors |
+| [~] | P11-T1 | Add live fetch request/auth contracts | codex | - | `crates/figma_client/src/lib.rs`, `crates/figma_client/Cargo.toml` | `cargo test -p figma_client` | - | Started 2026-03-04 16:32 CST; adding typed live request/auth contracts and explicit fetch error taxonomy |
 | [ ] | P11-T2 | Implement live Figma API node fetch | unassigned | P11-T1 | `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | - | Call `/v1/files/{file_key}/nodes?ids={node_id}` with `X-Figma-Token` |
 | [ ] | P11-T3 | Add live transport tests with mock server | unassigned | P11-T2 | `crates/figma_client/Cargo.toml`, `crates/figma_client/src/lib.rs` | `cargo test -p figma_client` | - | Cover success + auth/error mapping without external network |
 | [ ] | P11-T4 | Add orchestrator fetch config + live execution | unassigned | P11-T3 | `crates/orchestrator/src/lib.rs` | `cargo test -p orchestrator` | - | Add config-based stage/run-all entrypoints for fixture vs live |
