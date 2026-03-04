@@ -1,0 +1,4 @@
+interface:
+  display_name: "Parallel Phase Workflow"
+  short_description: "Parallel phase boards for multi-agent delivery"
+  default_prompt: "Use $parallel-phase-workflow to run the current phase with [ ], [~], and [x] task states."
