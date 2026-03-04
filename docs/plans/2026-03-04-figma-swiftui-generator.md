@@ -1,5 +1,7 @@
 # Figma Node Tree to SwiftUI Generator Implementation Plan
 
+> **Update (2026-03-04):** The implementation has pivoted to a Blueprint-first + LLM flow. See `docs/plans/2026-03-04-ui-blueprint-llm-generation.md` for current execution details, including `build-ui-blueprint`, `prepare-llm-bundle`, `generate-ui`, and `output/specs/ui_blueprint.yaml`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Bootstrap a deterministic Rust 2024 workspace that can execute the Figma-node-to-SwiftUI pipeline in explicit stages, with stable contracts and verification-first development.
@@ -617,4 +619,3 @@ git commit -m "chore: complete bootstrap milestone verification"
 3. Versioned contract roots compile and serialize deterministically.
 4. CLI exposes the stage command surface.
 5. Verification script and smoke tests run cleanly.
-

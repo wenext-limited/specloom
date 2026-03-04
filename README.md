@@ -1,13 +1,14 @@
 # Forge
 
-Figma node tree to SwiftUI generator workspace in Rust 2024.
+Figma node tree to UI Blueprint + LLM UI generation workspace in Rust 2024.
 
 This repository implements a deterministic, stage-based pipeline that produces:
 
 1. normalized/intermediate JSON artifacts
-2. generated SwiftUI source
+2. `ui_blueprint.yaml` for LLM-oriented generation
 3. asset manifest metadata
 4. review report warnings and summaries
+5. optional LLM bundle and generated UI code artifacts
 
 ## Quickstart
 
@@ -61,9 +62,11 @@ Generated artifacts:
 | `normalize` | `output/normalized` | `output/normalized/normalized_document.json` |
 | `infer-layout` | `output/inferred` | `output/inferred/layout_inference.json` |
 | `build-spec` | `output/specs` | `output/specs/ui_spec.json` |
-| `gen-swiftui` | `output/swift` | `output/swift/FixtureRootView.swift` |
+| `build-ui-blueprint` | `output/specs` | `output/specs/ui_blueprint.yaml` |
 | `export-assets` | `output/assets` | `output/assets/asset_manifest.json` |
 | `report` | `output/reports` | `output/reports/review_report.json` |
+| `prepare-llm-bundle` (on demand) | `output/llm` | `output/llm/llm_bundle.json` |
+| `generate-ui` (on demand) | `output/generated-ui` | target-specific generated source files |
 
 ## CLI Commands
 
@@ -79,6 +82,8 @@ Run one stage:
 ```bash
 cargo run -p cli -- run-stage fetch
 cargo run -p cli -- run-stage normalize --output json
+cargo run -p cli -- run-stage build-ui-blueprint
+cargo run -p cli -- run-stage prepare-llm-bundle
 ```
 
 Run fetch stage directly (fixture or live):
@@ -98,6 +103,14 @@ cargo run -p cli -- generate --input live --file-key <FILE_KEY> --node-id <NODE_
 cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
 ```
 
+Prepare and run LLM UI generation:
+
+```bash
+cargo run -p cli -- run-stage prepare-llm-bundle
+export OPENAI_API_KEY="<YOUR_API_KEY>"
+cargo run -p cli -- generate-ui --target swiftui --model gpt-5
+```
+
 ## CLI Workflow Matrix
 
 | Goal | Command | Output Mode |
@@ -113,12 +126,15 @@ cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/des
 | Run end-to-end pipeline with live Figma input | `cargo run -p cli -- generate --input live --file-key <file> --node-id <node>` | text (default) |
 | Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
 | Run end-to-end pipeline with structured stage results | `cargo run -p cli -- generate --output json` | json |
+| Build deterministic LLM bundle artifact | `cargo run -p cli -- run-stage prepare-llm-bundle` | text (default) |
+| Generate UI files via direct model call | `cargo run -p cli -- generate-ui --target <target> --model <model>` | text (default) |
 
 Notes:
 
-1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `gen-swiftui`, `export-assets`, and `report`.
+1. Valid stages are: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-ui-blueprint`, `gen-swiftui` (legacy), `export-assets`, `report`, and `prepare-llm-bundle`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
-3. `generate` runs all stages sequentially in the order listed above.
+3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `infer-layout`, `build-spec`, `build-ui-blueprint`, `export-assets`, and `report`.
+4. `generate-ui` requires `OPENAI_API_KEY` or `--api-key`.
 
 ## Scope
 

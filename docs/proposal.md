@@ -23,6 +23,16 @@ Non-goals for the first version:
 
 Success means: **the pipeline can generate compileable, structurally correct SwiftUI for common product screens with deterministic output and a clear review trail**.
 
+## 1.1 Current Implementation Update (2026-03-04)
+
+The active pipeline has been extended with an LLM-oriented contract and tooling layer:
+
+1. Deterministic stage `build-ui-blueprint` now emits `output/specs/ui_blueprint.yaml` in addition to `output/specs/ui_spec.json`.
+2. Deterministic stage `prepare-llm-bundle` writes `output/llm/llm_bundle.json` for model consumption.
+3. CLI command `generate-ui` performs direct model-based UI generation from the prepared bundle.
+
+This keeps deterministic Rust stages authoritative while enabling target-specific generation through an explicit LLM interface.
+
 ## 2. End-to-End Architecture
 
 ```text
