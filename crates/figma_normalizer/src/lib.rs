@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub const NORMALIZED_SCHEMA_VERSION: &str = "1.0";
+pub const FIGMA_API_VERSION: &str = "v1";
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedDocument {
     pub schema_version: String,
@@ -10,7 +13,7 @@ pub struct NormalizedDocument {
 impl Default for NormalizedDocument {
     fn default() -> Self {
         Self {
-            schema_version: "1.0".to_string(),
+            schema_version: NORMALIZED_SCHEMA_VERSION.to_string(),
             source: NormalizedSource::default(),
             nodes: Vec::new(),
         }
@@ -29,7 +32,7 @@ impl Default for NormalizedSource {
         Self {
             file_key: String::new(),
             root_node_id: String::new(),
-            figma_api_version: "v1".to_string(),
+            figma_api_version: FIGMA_API_VERSION.to_string(),
         }
     }
 }
@@ -176,6 +179,7 @@ pub struct VariantProperty {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn normalized_document_round_trip() {
@@ -193,76 +197,209 @@ mod tests {
         assert_eq!(back.nodes[0].children, vec!["2:1".to_string(), "3:1".to_string()]);
     }
 
+    #[test]
+    fn node_collection_order_is_stable() {
+        let doc = sample_document();
+        let json = serde_json::to_string_pretty(&doc).unwrap();
+        let back: NormalizedDocument = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>(),
+            vec!["1:1".to_string(), "2:1".to_string(), "3:1".to_string()]
+        );
+    }
+
+    #[test]
+    fn root_contract_fields_are_explicit() {
+        let doc = sample_document();
+        let json = serde_json::to_value(&doc).unwrap();
+
+        let object = json
+            .as_object()
+            .expect("normalized document should serialize as an object");
+        assert_eq!(
+            object.get("schema_version"),
+            Some(&Value::String(NORMALIZED_SCHEMA_VERSION.to_string()))
+        );
+        assert!(object.contains_key("source"));
+        assert!(object.contains_key("nodes"));
+
+        let source = object
+            .get("source")
+            .and_then(Value::as_object)
+            .expect("source should serialize as an object");
+        assert_eq!(source.get("file_key"), Some(&Value::String("abc123".to_string())));
+        assert_eq!(
+            source.get("root_node_id"),
+            Some(&Value::String("1:1".to_string()))
+        );
+        assert_eq!(
+            source.get("figma_api_version"),
+            Some(&Value::String(FIGMA_API_VERSION.to_string()))
+        );
+    }
+
+    #[test]
+    fn defaults_include_explicit_versions() {
+        let doc = NormalizedDocument::default();
+        assert_eq!(doc.schema_version, NORMALIZED_SCHEMA_VERSION);
+        assert_eq!(doc.source.figma_api_version, FIGMA_API_VERSION);
+    }
+
     fn sample_document() -> NormalizedDocument {
         NormalizedDocument {
-            schema_version: "1.0".to_string(),
+            schema_version: NORMALIZED_SCHEMA_VERSION.to_string(),
             source: NormalizedSource {
                 file_key: "abc123".to_string(),
                 root_node_id: "1:1".to_string(),
-                figma_api_version: "v1".to_string(),
+                figma_api_version: FIGMA_API_VERSION.to_string(),
             },
-            nodes: vec![NormalizedNode {
-                id: "1:1".to_string(),
-                parent_id: None,
-                name: "Root".to_string(),
-                kind: NodeKind::Frame,
-                visible: true,
-                bounds: Bounds {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 390.0,
-                    h: 844.0,
-                },
-                layout: Some(LayoutMetadata {
-                    mode: LayoutMode::Vertical,
-                    primary_align: Align::Start,
-                    cross_align: Align::Stretch,
-                    item_spacing: 16.0,
-                    padding: Padding {
-                        top: 24.0,
-                        right: 20.0,
-                        bottom: 24.0,
-                        left: 20.0,
+            nodes: vec![
+                NormalizedNode {
+                    id: "1:1".to_string(),
+                    parent_id: None,
+                    name: "Root".to_string(),
+                    kind: NodeKind::Frame,
+                    visible: true,
+                    bounds: Bounds {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 390.0,
+                        h: 844.0,
                     },
-                }),
-                constraints: Some(LayoutConstraints {
-                    horizontal: ConstraintMode::Stretch,
-                    vertical: ConstraintMode::Min,
-                }),
-                style: NodeStyle {
-                    opacity: 1.0,
-                    corner_radius: Some(12.0),
-                    fills: vec![Paint {
-                        kind: PaintKind::Solid,
-                        color: Some(Color {
-                            r: 1.0,
-                            g: 1.0,
-                            b: 1.0,
-                            a: 1.0,
-                        }),
-                        image_ref: None,
-                    }],
-                    strokes: vec![Stroke {
-                        width: 1.0,
-                        color: Color {
-                            r: 0.9,
-                            g: 0.9,
-                            b: 0.9,
-                            a: 1.0,
+                    layout: Some(LayoutMetadata {
+                        mode: LayoutMode::Vertical,
+                        primary_align: Align::Start,
+                        cross_align: Align::Stretch,
+                        item_spacing: 16.0,
+                        padding: Padding {
+                            top: 24.0,
+                            right: 20.0,
+                            bottom: 24.0,
+                            left: 20.0,
                         },
-                    }],
+                    }),
+                    constraints: Some(LayoutConstraints {
+                        horizontal: ConstraintMode::Stretch,
+                        vertical: ConstraintMode::Min,
+                    }),
+                    style: NodeStyle {
+                        opacity: 1.0,
+                        corner_radius: Some(12.0),
+                        fills: vec![Paint {
+                            kind: PaintKind::Solid,
+                            color: Some(Color {
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                                a: 1.0,
+                            }),
+                            image_ref: None,
+                        }],
+                        strokes: vec![Stroke {
+                            width: 1.0,
+                            color: Color {
+                                r: 0.9,
+                                g: 0.9,
+                                b: 0.9,
+                                a: 1.0,
+                            },
+                        }],
+                    },
+                    component: ComponentMetadata {
+                        component_id: None,
+                        component_set_id: None,
+                        instance_of: None,
+                        variant_properties: vec![VariantProperty {
+                            name: "state".to_string(),
+                            value: "default".to_string(),
+                        }],
+                    },
+                    children: vec!["2:1".to_string(), "3:1".to_string()],
                 },
-                component: ComponentMetadata {
-                    component_id: None,
-                    component_set_id: None,
-                    instance_of: None,
-                    variant_properties: vec![VariantProperty {
-                        name: "state".to_string(),
-                        value: "default".to_string(),
-                    }],
+                NormalizedNode {
+                    id: "2:1".to_string(),
+                    parent_id: Some("1:1".to_string()),
+                    name: "Title".to_string(),
+                    kind: NodeKind::Text,
+                    visible: true,
+                    bounds: Bounds {
+                        x: 20.0,
+                        y: 24.0,
+                        w: 160.0,
+                        h: 38.0,
+                    },
+                    layout: None,
+                    constraints: Some(LayoutConstraints {
+                        horizontal: ConstraintMode::Stretch,
+                        vertical: ConstraintMode::Min,
+                    }),
+                    style: NodeStyle {
+                        opacity: 1.0,
+                        corner_radius: None,
+                        fills: vec![Paint {
+                            kind: PaintKind::Solid,
+                            color: Some(Color {
+                                r: 0.1,
+                                g: 0.1,
+                                b: 0.1,
+                                a: 1.0,
+                            }),
+                            image_ref: None,
+                        }],
+                        strokes: Vec::new(),
+                    },
+                    component: ComponentMetadata {
+                        component_id: None,
+                        component_set_id: None,
+                        instance_of: None,
+                        variant_properties: Vec::new(),
+                    },
+                    children: Vec::new(),
                 },
-                children: vec!["2:1".to_string(), "3:1".to_string()],
-            }],
+                NormalizedNode {
+                    id: "3:1".to_string(),
+                    parent_id: Some("1:1".to_string()),
+                    name: "PrimaryButton".to_string(),
+                    kind: NodeKind::Instance,
+                    visible: true,
+                    bounds: Bounds {
+                        x: 20.0,
+                        y: 78.0,
+                        w: 350.0,
+                        h: 48.0,
+                    },
+                    layout: None,
+                    constraints: Some(LayoutConstraints {
+                        horizontal: ConstraintMode::Stretch,
+                        vertical: ConstraintMode::Min,
+                    }),
+                    style: NodeStyle {
+                        opacity: 1.0,
+                        corner_radius: Some(8.0),
+                        fills: vec![Paint {
+                            kind: PaintKind::Solid,
+                            color: Some(Color {
+                                r: 0.14,
+                                g: 0.45,
+                                b: 0.95,
+                                a: 1.0,
+                            }),
+                            image_ref: None,
+                        }],
+                        strokes: Vec::new(),
+                    },
+                    component: ComponentMetadata {
+                        component_id: Some("42:7".to_string()),
+                        component_set_id: Some("42:0".to_string()),
+                        instance_of: Some("42:7".to_string()),
+                        variant_properties: vec![VariantProperty {
+                            name: "state".to_string(),
+                            value: "enabled".to_string(),
+                        }],
+                    },
+                    children: Vec::new(),
+                },
+            ],
         }
     }
 }
