@@ -48,6 +48,9 @@ impl PipelineError {
             Self::Serialization(details) => format!(
                 "serialization error: {details}. Delete stale artifacts under `output/` and rerun the upstream stage."
             ),
+            Self::FetchClient(details) => format!(
+                "fetch client error: {details}. For live fetch, verify `--input live`, `--file-key`, `--node-id`, and `FIGMA_TOKEN` (or `--figma-token`), then confirm file and node permissions in Figma."
+            ),
             _ => self.to_string(),
         }
     }
@@ -534,6 +537,28 @@ mod tests {
         let message = PipelineError::Io("Not a directory".to_string()).actionable_message();
         assert!(message.contains("io error"));
         assert!(message.contains("working directory is writable"));
+    }
+
+    #[test]
+    fn fetch_client_actionable_message_mentions_token_and_permissions() {
+        let message = PipelineError::FetchClient("figma api unauthorized".to_string())
+            .actionable_message();
+        assert!(message.contains("figma api unauthorized"));
+        assert!(message.contains("FIGMA_TOKEN"));
+        assert!(message.contains("file and node permissions"));
+    }
+
+    #[test]
+    fn fetch_client_actionable_message_mentions_live_parameter_hints() {
+        let message = PipelineError::FetchClient(
+            "invalid figma api response: missing nodes.123:456.document in figma response"
+                .to_string(),
+        )
+        .actionable_message();
+        assert!(message.contains("missing nodes.123:456.document"));
+        assert!(message.contains("--file-key"));
+        assert!(message.contains("--node-id"));
+        assert!(message.contains("--input live"));
     }
 
     #[test]
