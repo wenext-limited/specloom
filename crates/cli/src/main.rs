@@ -19,6 +19,10 @@ enum Command {
     GenSwiftui,
     ExportAssets,
     Report,
+    Generate {
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
     Stages {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
@@ -88,6 +92,55 @@ fn main() {
                     std::process::exit(2);
                 }
             },
+            Command::Generate { output } => match orchestrator::run_all() {
+                Ok(results) => match output {
+                    OutputMode::Text => {
+                        for result in results {
+                            if let Some(artifact_path) = result.artifact_path {
+                                println!(
+                                    "stage={} output={} artifact={}",
+                                    result.stage_name, result.output_dir, artifact_path
+                                );
+                            } else {
+                                println!(
+                                    "stage={} output={}",
+                                    result.stage_name, result.output_dir
+                                );
+                            }
+                        }
+                    }
+                    OutputMode::Json => {
+                        let results = results
+                            .into_iter()
+                            .map(|result| {
+                                let artifact = if let Some(path) = result.artifact_path {
+                                    format!("\"{}\"", json_escape(path.as_str()))
+                                } else {
+                                    "null".to_string()
+                                };
+                                format!(
+                                    "{{\"stage\":\"{}\",\"output\":\"{}\",\"artifact\":{}}}",
+                                    json_escape(result.stage_name),
+                                    json_escape(result.output_dir),
+                                    artifact
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        println!("{{\"results\":[{results}]}}");
+                    }
+                },
+                Err(err) => {
+                    let message = err.to_string();
+                    match output {
+                        OutputMode::Text => eprintln!("{message}"),
+                        OutputMode::Json => {
+                            eprintln!("{{\"error\":\"{}\"}}", json_escape(&message));
+                        }
+                    }
+                    std::process::exit(2);
+                }
+            },
             _ => {
                 let stage_name = command.stage_name();
                 if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
@@ -111,6 +164,7 @@ impl Command {
             Command::GenSwiftui => "gen-swiftui",
             Command::ExportAssets => "export-assets",
             Command::Report => "report",
+            Command::Generate { .. } => "generate",
             Command::Stages { .. } => "stages",
             Command::RunStage { .. } => "run-stage",
         }

@@ -7,6 +7,7 @@ fn help_lists_pipeline_subcommands() {
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("fetch"));
     assert!(text.contains("normalize"));
+    assert!(text.contains("generate"));
 }
 
 #[test]
@@ -115,4 +116,80 @@ fn run_stage_subcommand_rejects_unknown_stage_in_json_mode() {
     assert!(!output.status.success());
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
+}
+
+#[test]
+fn generate_subcommand_runs_full_pipeline() {
+    let workspace_root = unique_cli_workspace_root("generate_subcommand_runs_full_pipeline");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .arg("generate")
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(text.contains("stage=fetch output=output/raw"));
+    assert!(text.contains("stage=normalize output=output/normalized"));
+    assert!(text.contains("stage=infer-layout output=output/inferred"));
+    assert!(text.contains("stage=build-spec output=output/specs"));
+    assert!(text.contains("stage=gen-swiftui output=output/swift"));
+    assert!(text.contains("stage=export-assets output=output/assets"));
+    assert!(text.contains("stage=report output=output/reports"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn generate_subcommand_supports_json_output_mode() {
+    let workspace_root = unique_cli_workspace_root("generate_subcommand_supports_json_output_mode");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--output", "json"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(
+        text.trim(),
+        r#"{"results":[{"stage":"fetch","output":"output/raw","artifact":"output/raw/fetch_snapshot.json"},{"stage":"normalize","output":"output/normalized","artifact":"output/normalized/normalized_document.json"},{"stage":"infer-layout","output":"output/inferred","artifact":"output/inferred/layout_inference.json"},{"stage":"build-spec","output":"output/specs","artifact":"output/specs/ui_spec.json"},{"stage":"gen-swiftui","output":"output/swift","artifact":"output/swift/FixtureRootView.swift"},{"stage":"export-assets","output":"output/assets","artifact":"output/assets/asset_manifest.json"},{"stage":"report","output":"output/reports","artifact":"output/reports/review_report.json"}]}"#
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn generate_subcommand_returns_error_when_workspace_is_blocked() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_subcommand_returns_error_when_workspace_is_blocked");
+    std::fs::write(workspace_root.join("output"), "blocked").unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+        .current_dir(workspace_root.as_path())
+        .arg("generate")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(stderr.contains("io error"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
+    let timestamp_nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "forge-cli-{test_name}-{}-{timestamp_nanos}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(path.as_path()).expect("workspace should be created");
+    path
 }
