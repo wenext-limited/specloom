@@ -66,6 +66,33 @@ pub struct StageExecutionResult {
     pub artifact_path: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineRunConfig {
+    pub fetch_mode: FetchMode,
+}
+
+impl Default for PipelineRunConfig {
+    fn default() -> Self {
+        Self {
+            fetch_mode: FetchMode::Fixture,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FetchMode {
+    Fixture,
+    Live(LiveFetchConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveFetchConfig {
+    pub file_key: String,
+    pub node_id: String,
+    pub figma_token: String,
+    pub api_base_url: Option<String>,
+}
+
 const FETCH_ARTIFACT_RELATIVE_PATH: &str = "output/raw/fetch_snapshot.json";
 const NORMALIZED_ARTIFACT_RELATIVE_PATH: &str = "output/normalized/normalized_document.json";
 const INFERRED_ARTIFACT_RELATIVE_PATH: &str = "output/inferred/layout_inference.json";
@@ -139,27 +166,55 @@ pub fn pipeline_stage_output_dirs() -> Vec<(&'static str, &'static str)> {
 }
 
 pub fn run_stage(stage_name: &str) -> Result<StageExecutionResult, PipelineError> {
+    run_stage_with_config(stage_name, &PipelineRunConfig::default())
+}
+
+pub fn run_stage_with_config(
+    stage_name: &str,
+    config: &PipelineRunConfig,
+) -> Result<StageExecutionResult, PipelineError> {
     let workspace_root = std::env::current_dir().map_err(io_error)?;
-    run_stage_in_workspace(stage_name, workspace_root.as_path())
+    run_stage_in_workspace_with_config(stage_name, workspace_root.as_path(), config)
 }
 
 pub fn run_all() -> Result<Vec<StageExecutionResult>, PipelineError> {
+    run_all_with_config(&PipelineRunConfig::default())
+}
+
+pub fn run_all_with_config(
+    config: &PipelineRunConfig,
+) -> Result<Vec<StageExecutionResult>, PipelineError> {
     let workspace_root = std::env::current_dir().map_err(io_error)?;
-    run_all_in_workspace(workspace_root.as_path())
+    run_all_in_workspace_with_config(workspace_root.as_path(), config)
 }
 
 pub fn run_all_in_workspace(
     workspace_root: &Path,
 ) -> Result<Vec<StageExecutionResult>, PipelineError> {
+    run_all_in_workspace_with_config(workspace_root, &PipelineRunConfig::default())
+}
+
+pub fn run_all_in_workspace_with_config(
+    workspace_root: &Path,
+    config: &PipelineRunConfig,
+) -> Result<Vec<StageExecutionResult>, PipelineError> {
     PIPELINE_STAGES
         .iter()
-        .map(|stage| run_stage_in_workspace(stage.name, workspace_root))
+        .map(|stage| run_stage_in_workspace_with_config(stage.name, workspace_root, config))
         .collect()
 }
 
 pub fn run_stage_in_workspace(
     stage_name: &str,
     workspace_root: &Path,
+) -> Result<StageExecutionResult, PipelineError> {
+    run_stage_in_workspace_with_config(stage_name, workspace_root, &PipelineRunConfig::default())
+}
+
+pub fn run_stage_in_workspace_with_config(
+    stage_name: &str,
+    workspace_root: &Path,
+    config: &PipelineRunConfig,
 ) -> Result<StageExecutionResult, PipelineError> {
     let stage = PIPELINE_STAGES
         .iter()
@@ -168,7 +223,7 @@ pub fn run_stage_in_workspace(
         .ok_or_else(|| PipelineError::UnknownStage(stage_name.to_string()))?;
 
     let artifact_path = match stage.name {
-        "fetch" => Some(run_fetch_stage(workspace_root)?),
+        "fetch" => Some(run_fetch_stage(workspace_root, &config.fetch_mode)?),
         "normalize" => Some(run_normalize_stage(workspace_root)?),
         "infer-layout" => Some(run_infer_layout_stage(workspace_root)?),
         "build-spec" => Some(run_build_spec_stage(workspace_root)?),
@@ -185,15 +240,28 @@ pub fn run_stage_in_workspace(
     })
 }
 
-fn run_fetch_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let request = figma_client::FetchNodesRequest::new(
-        FETCH_FIXTURE_FILE_KEY.to_string(),
-        FETCH_FIXTURE_NODE_ID.to_string(),
-    )
-    .map_err(fetch_error)?;
-
-    let snapshot = figma_client::fetch_snapshot_from_fixture(&request, FETCH_FIXTURE_JSON)
-        .map_err(fetch_error)?;
+fn run_fetch_stage(workspace_root: &Path, fetch_mode: &FetchMode) -> Result<String, PipelineError> {
+    let snapshot = match fetch_mode {
+        FetchMode::Fixture => {
+            let request = figma_client::FetchNodesRequest::new(
+                FETCH_FIXTURE_FILE_KEY.to_string(),
+                FETCH_FIXTURE_NODE_ID.to_string(),
+            )
+            .map_err(fetch_error)?;
+            figma_client::fetch_snapshot_from_fixture(&request, FETCH_FIXTURE_JSON)
+                .map_err(fetch_error)?
+        }
+        FetchMode::Live(config) => {
+            let request = figma_client::LiveFetchRequest::new(
+                config.file_key.clone(),
+                config.node_id.clone(),
+                config.figma_token.clone(),
+                config.api_base_url.clone(),
+            )
+            .map_err(fetch_error)?;
+            figma_client::fetch_snapshot_live(&request).map_err(fetch_error)?
+        }
+    };
 
     let artifact_path = workspace_root.join(FETCH_ARTIFACT_RELATIVE_PATH);
     if let Some(parent) = artifact_path.parent() {
@@ -416,6 +484,7 @@ fn swiftui_ast_build_error(err: swiftui_ast::SwiftUiAstBuildError) -> PipelineEr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -529,6 +598,77 @@ mod tests {
         );
         assert_eq!(snapshot.source.file_key, "fixture-file-key");
         assert_eq!(snapshot.source.node_id, "0:1");
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
+    fn run_stage_fetch_with_live_config_writes_snapshot_artifact() {
+        let workspace_root =
+            unique_test_workspace_root("run_stage_fetch_with_live_config_writes_snapshot_artifact");
+        let (base_url, request_rx, server_thread) = start_single_response_server(
+            "200 OK",
+            r#"{
+                "nodes": {
+                    "123:456": {
+                        "document": {
+                            "id": "123:456",
+                            "name": "Live Root",
+                            "type": "FRAME",
+                            "children": []
+                        }
+                    }
+                }
+            }"#,
+        );
+        let config = PipelineRunConfig {
+            fetch_mode: FetchMode::Live(LiveFetchConfig {
+                file_key: "live-file-key".to_string(),
+                node_id: "123:456".to_string(),
+                figma_token: "secret-token".to_string(),
+                api_base_url: Some(base_url),
+            }),
+        };
+
+        let result = run_stage_in_workspace_with_config("fetch", workspace_root.as_path(), &config)
+            .expect("live fetch should run");
+        let raw_request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("mock server should receive request");
+        server_thread.join().expect("server thread should finish");
+
+        assert_eq!(
+            result,
+            StageExecutionResult {
+                stage_name: "fetch",
+                output_dir: "output/raw",
+                artifact_path: Some("output/raw/fetch_snapshot.json".to_string()),
+            }
+        );
+
+        let lower_request = raw_request.to_ascii_lowercase();
+        assert!(raw_request.starts_with("GET /v1/files/live-file-key/nodes?ids=123%3A456 HTTP/1.1"));
+        assert!(lower_request.contains("x-figma-token: secret-token"));
+
+        let artifact_path = workspace_root.join("output/raw/fetch_snapshot.json");
+        assert!(artifact_path.is_file(), "fetch artifact should exist");
+        let artifact =
+            std::fs::read_to_string(&artifact_path).expect("artifact should be readable");
+        let snapshot: figma_client::RawFigmaSnapshot =
+            serde_json::from_str(&artifact).expect("artifact should be valid raw snapshot json");
+        assert_eq!(snapshot.source.file_key, "live-file-key");
+        assert_eq!(snapshot.source.node_id, "123:456");
+        assert_eq!(
+            snapshot.payload,
+            serde_json::json!({
+                "document": {
+                    "id": "123:456",
+                    "name": "Live Root",
+                    "type": "FRAME",
+                    "children": []
+                }
+            })
+        );
 
         let _ = std::fs::remove_dir_all(&workspace_root);
     }
@@ -951,5 +1091,61 @@ mod tests {
         }
         let encoded = serde_json::to_string_pretty(artifact).expect("artifact should serialize");
         std::fs::write(&output_path, format!("{encoded}\n")).expect("artifact should be written");
+    }
+
+    fn start_single_response_server(
+        status_line: &str,
+        body: &str,
+    ) -> (
+        String,
+        std::sync::mpsc::Receiver<String>,
+        std::thread::JoinHandle<()>,
+    ) {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("mock server should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock server should expose local address");
+        let (request_tx, request_rx) = std::sync::mpsc::channel::<String>();
+        let status_line = status_line.to_string();
+        let body = body.to_string();
+
+        let server_thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("mock server should accept one request");
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .expect("mock server should set read timeout");
+
+            let mut request_bytes = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let bytes_read = stream
+                    .read(&mut buffer)
+                    .expect("mock server should read request bytes");
+                if bytes_read == 0 {
+                    break;
+                }
+                request_bytes.extend_from_slice(&buffer[..bytes_read]);
+                if request_bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let request = String::from_utf8_lossy(&request_bytes).to_string();
+            let _ = request_tx.send(request);
+
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n{body}",
+                content_length = body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("mock server should write response");
+            stream.flush().expect("mock server should flush response");
+        });
+
+        (format!("http://{address}"), request_rx, server_thread)
     }
 }
