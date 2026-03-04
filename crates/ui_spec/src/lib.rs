@@ -7,7 +7,7 @@ pub const UI_SPEC_VERSION: &str = "2.0";
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename = "Node")]
 pub struct UiSpec {
-    pub id: u32,
+    pub id: String,
     #[serde(rename = "type")]
     pub node_type: NodeType,
     pub name: String,
@@ -19,7 +19,7 @@ pub struct UiSpec {
 impl Default for UiSpec {
     fn default() -> Self {
         Self {
-            id: 1,
+            id: String::new(),
             node_type: NodeType::Container,
             name: String::new(),
             children: Vec::new(),
@@ -57,8 +57,6 @@ pub enum UiSpecBuildError {
     MissingNormalizedNode(String),
     #[error("unsupported normalized node kind `{kind}` at node `{node_id}`")]
     UnsupportedNormalizedNodeKind { node_id: String, kind: String },
-    #[error("node id overflow while assigning deterministic ids")]
-    NodeIdOverflow,
 }
 
 pub fn build_ui_spec(
@@ -77,33 +75,26 @@ pub fn build_ui_spec(
         return Err(UiSpecBuildError::MissingNormalizedRootNode(root_node_id));
     }
 
-    let mut next_id = 1u32;
-    build_ui_spec_node(root_node_id.as_str(), &nodes_by_id, &mut next_id)
+    build_ui_spec_node(root_node_id.as_str(), &nodes_by_id)
 }
 
 fn build_ui_spec_node(
     node_id: &str,
     nodes_by_id: &BTreeMap<&str, &figma_normalizer::NormalizedNode>,
-    next_id: &mut u32,
 ) -> Result<UiSpec, UiSpecBuildError> {
     let node = nodes_by_id
         .get(node_id)
         .copied()
         .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(node_id.to_string()))?;
 
-    let assigned_id = *next_id;
-    *next_id = next_id
-        .checked_add(1)
-        .ok_or(UiSpecBuildError::NodeIdOverflow)?;
-
     let children = node
         .children
         .iter()
-        .map(|child_id| build_ui_spec_node(child_id.as_str(), nodes_by_id, next_id))
+        .map(|child_id| build_ui_spec_node(child_id.as_str(), nodes_by_id))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(UiSpec {
-        id: assigned_id,
+        id: node.id.clone(),
         node_type: map_node_type(node)?,
         name: node.name.clone(),
         children,
@@ -148,11 +139,11 @@ mod tests {
     #[test]
     fn ui_spec_round_trip() {
         let spec = UiSpec {
-            id: 1,
+            id: "1:1".to_string(),
             node_type: NodeType::Container,
             name: "Root".to_string(),
             children: vec![UiSpec {
-                id: 2,
+                id: "1:2".to_string(),
                 node_type: NodeType::Text,
                 name: "Title".to_string(),
                 children: Vec::new(),
@@ -167,11 +158,11 @@ mod tests {
     #[test]
     fn ron_serialization_is_stable() {
         let spec = UiSpec {
-            id: 1,
+            id: "1:1".to_string(),
             node_type: NodeType::Container,
             name: "Root".to_string(),
             children: vec![UiSpec {
-                id: 2,
+                id: "1:2".to_string(),
                 node_type: NodeType::Vector,
                 name: "Icon".to_string(),
                 children: Vec::new(),
@@ -187,7 +178,7 @@ mod tests {
     #[test]
     fn leaf_nodes_omit_empty_children_in_ron() {
         let leaf = UiSpec {
-            id: 9,
+            id: "9:9".to_string(),
             node_type: NodeType::Text,
             name: "Leaf".to_string(),
             children: Vec::new(),
@@ -198,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn build_ui_spec_maps_tree_with_deterministic_ids() {
+    fn build_ui_spec_preserves_original_node_ids() {
         let normalized = figma_normalizer::NormalizationOutput {
             document: figma_normalizer::NormalizedDocument {
                 schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
@@ -223,12 +214,12 @@ mod tests {
         };
 
         let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
-        assert_eq!(spec.id, 1);
+        assert_eq!(spec.id, "1:1");
         assert_eq!(spec.node_type, NodeType::Container);
         assert_eq!(spec.children.len(), 2);
-        assert_eq!(spec.children[0].id, 2);
+        assert_eq!(spec.children[0].id, "2:1");
         assert_eq!(spec.children[0].node_type, NodeType::Text);
-        assert_eq!(spec.children[1].id, 3);
+        assert_eq!(spec.children[1].id, "3:1");
         assert_eq!(spec.children[1].node_type, NodeType::Vector);
     }
 
