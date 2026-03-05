@@ -15,6 +15,7 @@ Hard rules:
 
 1. Never hand-edit `ui_spec.ron`.
 2. Never copy `pre_layout.ron` into `ui_spec.ron`.
+3. Never read `output/specs/node_map.json` directly; check existence only, then use `agent-tool` reads.
 
 ## Required Sub-Skills
 
@@ -25,7 +26,9 @@ Hard rules:
 
 ## Quick Runbook
 
-1. Confirm inputs: `output/specs/pre_layout.ron`, `output/specs/node_map.json`, and root screenshot (`output/images/root_<node_id>.png`) when available.
+1. Confirm inputs exist:
+   - `test -f output/specs/pre_layout.ron`
+   - `test -f output/specs/node_map.json`
 2. Ground node decisions with `node-grounding-for-transform` (including screenshot checks for root and ambiguous/text-less nodes).
 3. Apply optional sub-skills only when evidence requires.
 4. Write `output/specs/transform_plan.json` using `authoring-transform-plan`.

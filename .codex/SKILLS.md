@@ -56,4 +56,5 @@ Use when executing or maintaining dependency-aware phase boards.
 
 1. Never shortcut `ui_spec.ron` by copying `pre_layout.ron`.
 2. Always apply transform decisions through `build-spec`.
-3. Keep uncertainty explicit; do not hide low-confidence decisions.
+3. Do not read `output/specs/node_map.json` directly; only existence-check it and use `forge agent-tool` for node reads.
+4. Keep uncertainty explicit; do not hide low-confidence decisions.

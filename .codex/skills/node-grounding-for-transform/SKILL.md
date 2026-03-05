@@ -5,11 +5,17 @@ description: Use when transform decisions require authoritative node evidence wi
 
 # Node Grounding for Transform
 
+## Hard Rule for node_map.json
+
+1. Do not read `output/specs/node_map.json` directly (`cat`, `sed`, `jq`, full-file loads).
+2. Only check existence: `test -f output/specs/node_map.json`.
+3. Read node data via `forge agent-tool` commands only.
+
 ## Evidence Priority
 
-1. Node contracts (`node_map.json` / `get-node-info`) are authoritative.
+1. Node contracts from `agent-tool get-node-info` are authoritative.
 2. Screenshot grounding is required for visual confirmation (root and ambiguity hotspots).
-3. If they conflict, prefer node data and state uncertainty.
+3. If screenshot and node data conflict, prefer node data and state uncertainty.
 
 ## Required Lookup Order
 
@@ -19,7 +25,7 @@ description: Use when transform decisions require authoritative node evidence wi
 
 ## Size/Mode Rules
 
-1. Large `node_map.json`: use targeted tool lookups, not full-file loading.
+1. `node_map.json` may be very large; never load it directly in context.
 2. `live`: screenshot grounding is required for root and ambiguity hotspots.
 3. `fixture`/`snapshot`: use screenshot artifacts if present; if absent, proceed with node evidence and explicitly note screenshot unavailability.
 4. Never block transform planning on screenshot absence alone.
