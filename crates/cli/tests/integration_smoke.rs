@@ -1,6 +1,6 @@
 mod support;
 
-use support::{specloom_command, unique_cli_workspace_root};
+use support::{seed_bundle_instruction_sources, specloom_command, unique_cli_workspace_root};
 
 #[test]
 fn cli_help_smoke() {
@@ -103,6 +103,43 @@ fn generate_success_with_explicit_fixture_input_smoke() {
         "stage=export-assets output=output/assets artifact=output/assets/asset_manifest.json"
     ));
     assert!(out.stderr.is_empty());
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn prepare_llm_bundle_success_smoke() {
+    let workspace_root = unique_cli_workspace_root("prepare_llm_bundle_success_smoke");
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let out = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login UI",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "stage=prepare-llm-bundle output=output/agent artifact=output/agent/llm_bundle.json\n"
+    );
+    assert!(out.stderr.is_empty());
+    assert!(workspace_root.join("output/agent/llm_bundle.json").is_file());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }

@@ -47,6 +47,21 @@ enum Command {
         #[command(flatten)]
         input: GenerateInputOptions,
     },
+    /// Build `output/agent/llm_bundle.json` from deterministic artifacts and instruction docs.
+    PrepareLlmBundle {
+        /// Figma quick link for source context.
+        #[arg(long)]
+        figma_url: String,
+        /// Target generation framework/runtime.
+        #[arg(long)]
+        target: String,
+        /// Developer intent for generation behavior.
+        #[arg(long)]
+        intent: String,
+        /// Output format for command results.
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
     /// List available stages and their output directories.
     Stages {
         /// Output format for command results.
@@ -313,6 +328,34 @@ fn main() {
                     },
                 }
             }
+            Command::PrepareLlmBundle {
+                figma_url,
+                target,
+                intent,
+                output,
+            } => {
+                let request = core::PrepareLlmBundleRequest {
+                    figma_url,
+                    target,
+                    intent,
+                };
+                match core::prepare_llm_bundle(&request) {
+                    Ok(artifact_path) => match output {
+                        OutputMode::Text => {
+                            println!(
+                                "stage=prepare-llm-bundle output=output/agent artifact={artifact_path}"
+                            );
+                        }
+                        OutputMode::Json => {
+                            println!(
+                                "{{\"stage\":\"prepare-llm-bundle\",\"output\":\"output/agent\",\"artifact\":\"{}\"}}",
+                                json_escape(artifact_path.as_str())
+                            );
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
+                }
+            }
             Command::AgentTool { tool } => match tool {
                 AgentToolCommand::FindNodes {
                     query,
@@ -440,6 +483,7 @@ impl Command {
             Command::BuildSpec => "build-spec",
             Command::ExportAssets => "export-assets",
             Command::Generate { .. } => "generate",
+            Command::PrepareLlmBundle { .. } => "prepare-llm-bundle",
             Command::Stages { .. } => "stages",
             Command::RunStage { .. } => "run-stage",
             Command::AgentTool { .. } => "agent-tool",

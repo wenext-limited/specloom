@@ -3,7 +3,7 @@
 **Phase ID:** `P15`
 **Goal:** Ship a reproducible `prepare-llm-bundle` + `generate-ui` workflow that converts Figma URL + intent into generated target code with warning/trace artifacts.
 **Source Plan:** `docs/plans/2026-03-05-end2end-agent-workflow.md`
-**Last Updated:** `2026-03-05 18:29 CST`
+**Last Updated:** `2026-03-05 18:33 CST`
 
 ## Status Legend
 
@@ -16,8 +16,8 @@
 | Status | ID | Task | Owner | Depends On | Files | Verification | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [x] | P15-T1 | Add `llm_bundle` contract types in core | codex | - | `crates/core/src/llm_bundle.rs`, `crates/core/src/lib.rs` | `cargo test -p specloom-core llm_bundle_ -- --nocapture` | `4ca6ec9` | Started 2026-03-05 18:27 CST; completed 2026-03-05 18:29 CST |
-| [~] | P15-T2 | Implement deterministic bundle builder and artifact hashing | codex | P15-T1 | `crates/core/src/lib.rs`, `crates/core/src/tests.rs`, `crates/core/src/hash.rs`, `crates/core/src/llm_bundle.rs` | `cargo test -p specloom-core prepare_llm_bundle_in_workspace_writes_bundle_artifact` | - | Started 2026-03-05 18:29 CST |
-| [ ] | P15-T3 | Add CLI `prepare-llm-bundle` command surface | unassigned | P15-T2 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p specloom-cli prepare_llm_bundle_subcommand_writes_bundle_path` | - | |
+| [x] | P15-T2 | Implement deterministic bundle builder and artifact hashing | codex | P15-T1 | `crates/core/src/lib.rs`, `crates/core/src/tests.rs`, `crates/core/src/hash.rs`, `crates/core/src/llm_bundle.rs` | `cargo test -p specloom-core prepare_llm_bundle_in_workspace_writes_bundle_artifact -- --nocapture` | `9422260` | Started 2026-03-05 18:29 CST; completed 2026-03-05 18:33 CST |
+| [~] | P15-T3 | Add CLI `prepare-llm-bundle` command surface | codex | P15-T2 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p specloom-cli prepare_llm_bundle_subcommand_writes_bundle_path` | - | Started 2026-03-05 18:33 CST |
 | [ ] | P15-T4 | Add agent runner abstraction with deterministic mock backend | unassigned | P15-T2 | `crates/core/src/agent_runner.rs`, `crates/core/src/lib.rs`, `crates/core/src/tests.rs` | `cargo test -p specloom-core generate_ui_with_mock_runner_writes_generated_output` | - | |
 | [ ] | P15-T5 | Implement core `generate-ui` workflow with warning/trace guarantees | unassigned | P15-T4 | `crates/core/src/lib.rs`, `crates/core/src/tests.rs` | `cargo test -p specloom-core generate_ui_in_workspace_always_emits_warning_and_trace_artifacts` | - | |
 | [ ] | P15-T6 | Add CLI `generate-ui` command surface | unassigned | P15-T5 | `crates/cli/src/main.rs`, `crates/cli/tests/commands.rs`, `crates/cli/tests/integration_smoke.rs` | `cargo test -p specloom-cli generate_ui_subcommand_reports_generated_artifact_paths` | - | |

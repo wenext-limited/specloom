@@ -1,7 +1,8 @@
 mod support;
 
 use support::{
-    specloom_command, start_live_api_server, start_single_binary_response_server,
+    seed_bundle_instruction_sources, specloom_command, start_live_api_server,
+    start_single_binary_response_server,
     unique_cli_workspace_root,
 };
 
@@ -567,6 +568,48 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
     assert!(stdout.contains("[1/5] FAIL stage=fetch"));
     assert!(stderr.contains("io error"));
     assert!(stderr.contains("working directory is writable"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn prepare_llm_bundle_subcommand_writes_bundle_path() {
+    let workspace_root = unique_cli_workspace_root("prepare_llm_bundle_subcommand_writes_bundle_path");
+
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+        ])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "prepare should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("stage=prepare-llm-bundle"));
+    assert!(stdout.contains("artifact=output/agent/llm_bundle.json"));
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    assert!(bundle_path.is_file());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
