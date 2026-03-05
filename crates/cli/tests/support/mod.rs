@@ -263,8 +263,7 @@ Use transform plan guidance.
     )
     .expect("skills guide should be writable");
 
-    let recognizing_layout_path =
-        workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
+    let recognizing_layout_path = workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
     if let Some(parent) = recognizing_layout_path.parent() {
         std::fs::create_dir_all(parent).expect("recognizing-layout parent should be creatable");
     }
@@ -274,10 +273,14 @@ Use transform plan guidance.
     let authoring_transform_path =
         workspace_root.join(".codex/skills/authoring-transform-plan/SKILL.md");
     if let Some(parent) = authoring_transform_path.parent() {
-        std::fs::create_dir_all(parent).expect("authoring-transform-plan parent should be creatable");
+        std::fs::create_dir_all(parent)
+            .expect("authoring-transform-plan parent should be creatable");
     }
-    std::fs::write(authoring_transform_path.as_path(), "# authoring transform plan")
-        .expect("authoring-transform-plan skill should be writable");
+    std::fs::write(
+        authoring_transform_path.as_path(),
+        "# authoring transform plan",
+    )
+    .expect("authoring-transform-plan skill should be writable");
 
     let playbook_path = workspace_root.join("docs/agent-playbook.md");
     if let Some(parent) = playbook_path.parent() {

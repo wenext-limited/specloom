@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-mod agent_runner;
 mod agent_context;
+mod agent_runner;
 mod asset_pipeline;
 pub mod figma_client;
 mod hash;
@@ -383,7 +383,8 @@ pub fn generate_ui_in_workspace(
     }
 
     let bundle_text = std::fs::read_to_string(bundle_path.as_path()).map_err(io_error)?;
-    let bundle = serde_json::from_str::<LlmBundle>(bundle_text.as_str()).map_err(serialization_error)?;
+    let bundle =
+        serde_json::from_str::<LlmBundle>(bundle_text.as_str()).map_err(serialization_error)?;
     let runner_output = match runner.generate(&AgentRunnerRequest { bundle }) {
         Ok(output) => output,
         Err(err) => {
@@ -408,7 +409,8 @@ pub fn generate_ui_in_workspace(
 
     let mut generated_paths = Vec::with_capacity(runner_output.generated_files.len());
     for generated_file in runner_output.generated_files {
-        let output_path = resolve_workspace_path(workspace_root, generated_file.relative_path.as_str());
+        let output_path =
+            resolve_workspace_path(workspace_root, generated_file.relative_path.as_str());
         write_bytes(output_path.as_path(), generated_file.contents.as_bytes())?;
         generated_paths.push(normalize_result_path(workspace_root, output_path.as_path()));
     }
@@ -1141,7 +1143,9 @@ fn build_artifact_ref(
 ) -> Result<BundleArtifactRef, PipelineError> {
     let path = workspace_root.join(relative_path);
     if !path.exists() {
-        return Err(PipelineError::MissingInputArtifact(relative_path.to_string()));
+        return Err(PipelineError::MissingInputArtifact(
+            relative_path.to_string(),
+        ));
     }
 
     let bytes = std::fs::read(path.as_path()).map_err(io_error)?;
@@ -1176,7 +1180,8 @@ fn build_bundle_instructions(workspace_root: &Path) -> Result<BundleInstructions
     let skills_guide_markdown = read_required_text_file(workspace_root, skills_guide_path)?;
     let agent_playbook_markdown =
         read_required_text_file(workspace_root, "docs/agent-playbook.md")?;
-    let figma_ui_coder_markdown = read_required_text_file(workspace_root, "docs/figma-ui-coder.md")?;
+    let figma_ui_coder_markdown =
+        read_required_text_file(workspace_root, "docs/figma-ui-coder.md")?;
 
     let mut skill_docs = Vec::new();
     for (name, path) in parse_active_skill_refs(skills_guide_markdown.as_str()) {
@@ -1249,7 +1254,9 @@ fn read_required_text_file(
 ) -> Result<String, PipelineError> {
     let path = workspace_root.join(relative_path);
     if !path.exists() {
-        return Err(PipelineError::MissingInputArtifact(relative_path.to_string()));
+        return Err(PipelineError::MissingInputArtifact(
+            relative_path.to_string(),
+        ));
     }
 
     std::fs::read_to_string(path.as_path()).map_err(io_error)

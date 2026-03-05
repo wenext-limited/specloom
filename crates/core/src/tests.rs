@@ -264,10 +264,14 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
     assert!(bundle_path.is_file());
 
     let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
-    let bundle: LlmBundle = serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
     assert_eq!(bundle.version, LLM_BUNDLE_VERSION);
     assert_eq!(bundle.request.target, "react-tailwind");
-    assert_eq!(bundle.request.intent, "Generate production-ready login screen");
+    assert_eq!(
+        bundle.request.intent,
+        "Generate production-ready login screen"
+    );
     assert_eq!(
         bundle.figma.source_url,
         "https://www.figma.com/design/abc/Login?node-id=1-2"
@@ -330,7 +334,11 @@ fn generate_ui_with_mock_runner_writes_generated_output() {
             .iter()
             .any(|path| path.starts_with("output/generated/"))
     );
-    assert!(workspace_root.join("output/generated/react-tailwind/App.tsx").is_file());
+    assert!(
+        workspace_root
+            .join("output/generated/react-tailwind/App.tsx")
+            .is_file()
+    );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
@@ -700,8 +708,7 @@ Use transform plan guidance.
     )
     .expect("skills guide should be writable");
 
-    let recognizing_layout_path =
-        workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
+    let recognizing_layout_path = workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
     if let Some(parent) = recognizing_layout_path.parent() {
         std::fs::create_dir_all(parent).expect("recognizing-layout parent should be creatable");
     }
@@ -711,10 +718,14 @@ Use transform plan guidance.
     let authoring_transform_path =
         workspace_root.join(".codex/skills/authoring-transform-plan/SKILL.md");
     if let Some(parent) = authoring_transform_path.parent() {
-        std::fs::create_dir_all(parent).expect("authoring-transform-plan parent should be creatable");
+        std::fs::create_dir_all(parent)
+            .expect("authoring-transform-plan parent should be creatable");
     }
-    std::fs::write(authoring_transform_path.as_path(), "# authoring transform plan")
-        .expect("authoring-transform-plan skill should be writable");
+    std::fs::write(
+        authoring_transform_path.as_path(),
+        "# authoring transform plan",
+    )
+    .expect("authoring-transform-plan skill should be writable");
 
     let playbook_path = workspace_root.join("docs/agent-playbook.md");
     if let Some(parent) = playbook_path.parent() {

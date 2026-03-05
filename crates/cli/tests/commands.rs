@@ -2,8 +2,7 @@ mod support;
 
 use support::{
     seed_bundle_instruction_sources, specloom_command, start_live_api_server,
-    start_single_binary_response_server,
-    unique_cli_workspace_root,
+    start_single_binary_response_server, unique_cli_workspace_root,
 };
 
 #[test]
@@ -574,7 +573,8 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
 
 #[test]
 fn prepare_llm_bundle_subcommand_writes_bundle_path() {
-    let workspace_root = unique_cli_workspace_root("prepare_llm_bundle_subcommand_writes_bundle_path");
+    let workspace_root =
+        unique_cli_workspace_root("prepare_llm_bundle_subcommand_writes_bundle_path");
 
     seed_bundle_instruction_sources(workspace_root.as_path());
 
@@ -656,7 +656,11 @@ fn generate_ui_subcommand_reports_generated_artifact_paths() {
     );
     assert!(stdout.contains("stage=generate-ui"));
     assert!(stdout.contains("output/generated/"));
-    assert!(workspace_root.join("output/generated/react-tailwind/App.tsx").is_file());
+    assert!(
+        workspace_root
+            .join("output/generated/react-tailwind/App.tsx")
+            .is_file()
+    );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }

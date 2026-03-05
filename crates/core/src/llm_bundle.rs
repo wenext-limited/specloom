@@ -81,7 +81,8 @@ mod tests {
     fn llm_bundle_round_trip_json() {
         let bundle = sample_bundle();
         let bytes = serde_json::to_vec_pretty(&bundle).expect("bundle should encode");
-        let decoded: LlmBundle = serde_json::from_slice(bytes.as_slice()).expect("bundle should decode");
+        let decoded: LlmBundle =
+            serde_json::from_slice(bytes.as_slice()).expect("bundle should decode");
         assert_eq!(decoded, bundle);
     }
 
@@ -136,8 +137,9 @@ mod tests {
                     },
                     BundleToolDefinition {
                         name: "get_node_info".to_string(),
-                        usage: "specloom agent-tool get-node-info --node-id <NODE_ID> --output json"
-                            .to_string(),
+                        usage:
+                            "specloom agent-tool get-node-info --node-id <NODE_ID> --output json"
+                                .to_string(),
                     },
                 ],
             },
@@ -147,8 +149,7 @@ mod tests {
     fn sample_artifact_ref(path: &str) -> BundleArtifactRef {
         BundleArtifactRef {
             path: path.to_string(),
-            sha256: "6f7f0f3f7f5872a76fdd8f36b7434eb95ebf7797b690ce5f5a3e87f1465d913d"
-                .to_string(),
+            sha256: "6f7f0f3f7f5872a76fdd8f36b7434eb95ebf7797b690ce5f5a3e87f1465d913d".to_string(),
         }
     }
 }

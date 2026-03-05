@@ -139,7 +139,11 @@ fn prepare_llm_bundle_success_smoke() {
         "stage=prepare-llm-bundle output=output/agent artifact=output/agent/llm_bundle.json\n"
     );
     assert!(out.stderr.is_empty());
-    assert!(workspace_root.join("output/agent/llm_bundle.json").is_file());
+    assert!(
+        workspace_root
+            .join("output/agent/llm_bundle.json")
+            .is_file()
+    );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
@@ -182,7 +186,11 @@ fn generate_ui_success_smoke() {
     assert!(stdout.contains("stage=generate-ui"));
     assert!(stdout.contains("artifact=output/generated/react-tailwind/App.tsx"));
     assert!(out.stderr.is_empty());
-    assert!(workspace_root.join("output/generated/react-tailwind/App.tsx").is_file());
+    assert!(
+        workspace_root
+            .join("output/generated/react-tailwind/App.tsx")
+            .is_file()
+    );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
