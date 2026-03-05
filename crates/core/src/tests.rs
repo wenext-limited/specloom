@@ -336,6 +336,47 @@ fn generate_ui_with_mock_runner_writes_generated_output() {
 }
 
 #[test]
+fn generate_ui_in_workspace_always_emits_warning_and_trace_artifacts() {
+    let workspace_root = unique_test_workspace_root(
+        "generate_ui_in_workspace_always_emits_warning_and_trace_artifacts",
+    );
+
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    generate_ui_in_workspace(
+        workspace_root.as_path(),
+        &GenerateUiRequest {
+            bundle_path: "output/agent/llm_bundle.json".to_string(),
+        },
+        &MockAgentRunner::default(),
+    )
+    .expect("generation should succeed");
+
+    assert!(
+        workspace_root
+            .join("output/reports/generation_warnings.json")
+            .is_file()
+    );
+    assert!(
+        workspace_root
+            .join("output/reports/generation_trace.json")
+            .is_file()
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn build_agent_context_uses_transformed_final_spec() {
     let workspace_root =
         unique_test_workspace_root("build_agent_context_uses_transformed_final_spec");

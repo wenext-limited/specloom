@@ -367,6 +367,8 @@ pub fn generate_ui_in_workspace(
     request: &GenerateUiRequest,
     runner: &dyn AgentRunner,
 ) -> Result<GenerateUiResult, PipelineError> {
+    ensure_generation_reports_exist(workspace_root)?;
+
     if request.bundle_path.trim().is_empty() {
         return Err(PipelineError::MissingInputArtifact(
             LLM_BUNDLE_ARTIFACT_RELATIVE_PATH.to_string(),
@@ -382,7 +384,27 @@ pub fn generate_ui_in_workspace(
 
     let bundle_text = std::fs::read_to_string(bundle_path.as_path()).map_err(io_error)?;
     let bundle = serde_json::from_str::<LlmBundle>(bundle_text.as_str()).map_err(serialization_error)?;
-    let runner_output = runner.generate(&AgentRunnerRequest { bundle })?;
+    let runner_output = match runner.generate(&AgentRunnerRequest { bundle }) {
+        Ok(output) => output,
+        Err(err) => {
+            append_warning(
+                workspace_root,
+                "GENERATION_RUNNER_FAILURE",
+                request.bundle_path.as_str(),
+                Vec::new(),
+                "stop_generation",
+                err.to_string().as_str(),
+            )?;
+            append_trace_event(
+                workspace_root,
+                "generate_ui",
+                "error",
+                request.bundle_path.as_str(),
+                Vec::new(),
+            )?;
+            return Err(err);
+        }
+    };
 
     let mut generated_paths = Vec::with_capacity(runner_output.generated_files.len());
     for generated_file in runner_output.generated_files {
@@ -390,6 +412,14 @@ pub fn generate_ui_in_workspace(
         write_bytes(output_path.as_path(), generated_file.contents.as_bytes())?;
         generated_paths.push(normalize_result_path(workspace_root, output_path.as_path()));
     }
+
+    append_trace_event(
+        workspace_root,
+        "generate_ui",
+        "ok",
+        request.bundle_path.as_str(),
+        generated_paths.clone(),
+    )?;
 
     Ok(GenerateUiResult { generated_paths })
 }
@@ -997,6 +1027,30 @@ fn node_info_status_label(status: &NodeInfoStatus) -> &'static str {
         NodeInfoStatus::Ok => "ok",
         NodeInfoStatus::NotFound => "not_found",
     }
+}
+
+fn ensure_generation_reports_exist(workspace_root: &Path) -> Result<(), PipelineError> {
+    let warnings_path = workspace_root.join(GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH);
+    if !warnings_path.exists() {
+        let warnings = agent_context::GenerationWarnings {
+            version: "generation_warnings/1.0".to_string(),
+            warnings: Vec::new(),
+        };
+        let encoded = serde_json::to_vec_pretty(&warnings).map_err(serialization_error)?;
+        write_bytes(warnings_path.as_path(), encoded.as_slice())?;
+    }
+
+    let trace_path = workspace_root.join(GENERATION_TRACE_ARTIFACT_RELATIVE_PATH);
+    if !trace_path.exists() {
+        let trace = agent_context::GenerationTrace {
+            version: "generation_trace/1.0".to_string(),
+            events: Vec::new(),
+        };
+        let encoded = serde_json::to_vec_pretty(&trace).map_err(serialization_error)?;
+        write_bytes(trace_path.as_path(), encoded.as_slice())?;
+    }
+
+    Ok(())
 }
 
 fn append_warning(
