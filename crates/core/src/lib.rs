@@ -180,6 +180,9 @@ const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/agent/llm_bundle.json";
 const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
 const GENERATION_TRACE_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_trace.json";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
+const DEFAULT_INSTRUCTION_REMOTE_BASE_URL: &str =
+    "https://raw.githubusercontent.com/WendellXY/specloom";
+const INSTRUCTION_REMOTE_BASE_URL_ENV: &str = "SPECLOOM_SKILLS_REMOTE_BASE_URL";
 
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
@@ -289,6 +292,14 @@ pub fn prepare_llm_bundle_in_workspace(
     workspace_root: &Path,
     request: &PrepareLlmBundleRequest,
 ) -> Result<String, PipelineError> {
+    prepare_llm_bundle_in_workspace_with_remote_base_url(workspace_root, request, None)
+}
+
+fn prepare_llm_bundle_in_workspace_with_remote_base_url(
+    workspace_root: &Path,
+    request: &PrepareLlmBundleRequest,
+    remote_base_url_override: Option<&str>,
+) -> Result<String, PipelineError> {
     let snapshot = read_required_json::<figma_client::RawFigmaSnapshot>(
         workspace_root,
         FETCH_ARTIFACT_RELATIVE_PATH,
@@ -298,7 +309,8 @@ pub fn prepare_llm_bundle_in_workspace(
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH,
     )?;
 
-    let instructions = build_bundle_instructions(workspace_root)?;
+    let instructions =
+        build_bundle_instructions_with_remote_base_url(workspace_root, remote_base_url_override)?;
     let bundle = LlmBundle {
         version: LLM_BUNDLE_VERSION.to_string(),
         request: BundleRequest {
@@ -1222,17 +1234,41 @@ fn build_optional_artifact_ref(
     }))
 }
 
-fn build_bundle_instructions(workspace_root: &Path) -> Result<BundleInstructions, PipelineError> {
+fn build_bundle_instructions_with_remote_base_url(
+    workspace_root: &Path,
+    remote_base_url_override: Option<&str>,
+) -> Result<BundleInstructions, PipelineError> {
     let skills_guide_path = ".codex/SKILLS.md";
-    let skills_guide_markdown = read_required_text_file(workspace_root, skills_guide_path)?;
-    let agent_playbook_markdown =
-        read_required_text_file(workspace_root, "docs/agent-playbook.md")?;
-    let figma_ui_coder_markdown =
-        read_required_text_file(workspace_root, "docs/figma-ui-coder.md")?;
+    let remote_base_url = resolve_instruction_remote_base_url(remote_base_url_override)
+        .ok_or_else(|| PipelineError::MissingInputArtifact(skills_guide_path.to_string()))?;
+    let release_refs = instruction_release_refs();
+    let skills_guide_markdown = read_instruction_text(
+        workspace_root,
+        skills_guide_path,
+        remote_base_url.as_str(),
+        release_refs.as_slice(),
+    )?;
+    let agent_playbook_markdown = read_instruction_text(
+        workspace_root,
+        "docs/agent-playbook.md",
+        remote_base_url.as_str(),
+        release_refs.as_slice(),
+    )?;
+    let figma_ui_coder_markdown = read_instruction_text(
+        workspace_root,
+        "docs/figma-ui-coder.md",
+        remote_base_url.as_str(),
+        release_refs.as_slice(),
+    )?;
 
     let mut skill_docs = Vec::new();
     for (name, path) in parse_active_skill_refs(skills_guide_markdown.as_str()) {
-        let markdown = read_required_text_file(workspace_root, path.as_str())?;
+        let markdown = read_instruction_text(
+            workspace_root,
+            path.as_str(),
+            remote_base_url.as_str(),
+            release_refs.as_slice(),
+        )?;
         skill_docs.push(BundleSkillDoc {
             name,
             path,
@@ -1295,18 +1331,98 @@ fn extract_backticked_name(line: &str) -> Option<String> {
     Some(tail[..end].to_string())
 }
 
-fn read_required_text_file(
+fn resolve_instruction_remote_base_url(remote_base_url_override: Option<&str>) -> Option<String> {
+    normalize_optional_field(remote_base_url_override)
+        .or_else(|| {
+            std::env::var(INSTRUCTION_REMOTE_BASE_URL_ENV)
+                .ok()
+                .and_then(|value| normalize_optional_field(Some(value.as_str())))
+        })
+        .or_else(|| Some(DEFAULT_INSTRUCTION_REMOTE_BASE_URL.to_string()))
+}
+
+fn instruction_release_refs() -> Vec<String> {
+    let version = env!("CARGO_PKG_VERSION");
+    vec![format!("v{version}"), version.to_string()]
+}
+
+fn read_instruction_text(
     workspace_root: &Path,
     relative_path: &str,
+    remote_base_url: &str,
+    release_refs: &[String],
 ) -> Result<String, PipelineError> {
-    let path = workspace_root.join(relative_path);
-    if !path.exists() {
+    let local_path = workspace_root.join(relative_path);
+    if local_path.is_file() {
+        return std::fs::read_to_string(local_path.as_path()).map_err(io_error);
+    }
+    read_remote_instruction_text(relative_path, remote_base_url, release_refs)
+}
+
+fn read_remote_instruction_text(
+    relative_path: &str,
+    remote_base_url: &str,
+    release_refs: &[String],
+) -> Result<String, PipelineError> {
+    if release_refs.is_empty() {
         return Err(PipelineError::MissingInputArtifact(
             relative_path.to_string(),
         ));
     }
 
-    std::fs::read_to_string(path.as_path()).map_err(io_error)
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|err| {
+            PipelineError::FetchClient(format!("instruction source client build error: {err}"))
+        })?;
+    let mut attempts = Vec::new();
+    let normalized_path = relative_path.trim_start_matches('/');
+
+    for release_ref in release_refs {
+        let url = format!(
+            "{}/{}/{}",
+            remote_base_url.trim_end_matches('/'),
+            release_ref,
+            normalized_path
+        );
+        let response = client
+            .get(url.as_str())
+            .header(
+                reqwest::header::USER_AGENT,
+                format!("specloom/{}", env!("CARGO_PKG_VERSION")),
+            )
+            .send();
+        match response {
+            Ok(response) if response.status().is_success() => {
+                return response.text().map_err(|err| {
+                    PipelineError::FetchClient(format!(
+                        "instruction source decode error for {relative_path}: {err}"
+                    ))
+                });
+            }
+            Ok(response) => {
+                attempts.push(format!(
+                    "ref={} status={} url={}",
+                    release_ref,
+                    response.status().as_u16(),
+                    url
+                ));
+            }
+            Err(err) => {
+                attempts.push(format!(
+                    "ref={} transport_error={} url={}",
+                    release_ref, err, url
+                ));
+            }
+        }
+    }
+
+    Err(PipelineError::FetchClient(format!(
+        "instruction source unavailable for `{relative_path}` with release refs [{}]. Attempts: {}",
+        release_refs.join(", "),
+        attempts.join("; ")
+    )))
 }
 
 fn read_required_json<T>(workspace_root: &Path, relative_path: &str) -> Result<T, PipelineError>

@@ -177,7 +177,8 @@ Notes:
 4. `prepare-llm-bundle` writes `output/agent/llm_bundle.json`.
 5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
 6. `--provider anthropic` requires `ANTHROPIC_API_KEY` (or `--api-key`).
-7. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+7. `prepare-llm-bundle` loads instruction docs from local project files first; if missing, it fetches from GitHub release refs matching CLI version (`v<version>`, then `<version>`).
+8. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## License
 

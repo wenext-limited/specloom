@@ -303,6 +303,147 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
 }
 
 #[test]
+fn prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing",
+    );
+    seed_full_fixture_pipeline(workspace_root.as_path());
+
+    let version = env!("CARGO_PKG_VERSION");
+    let release_ref = format!("v{version}");
+    let skills_markdown = r#"# Project Skills Guide
+
+## Active Skills
+
+1. `recognizing-layout`
+Path: `.codex/skills/recognizing-layout/SKILL.md`
+Use layout guidance.
+
+2. `authoring-transform-plan`
+Path: `.codex/skills/authoring-transform-plan/SKILL.md`
+Use transform plan guidance.
+"#;
+    let routes = std::collections::BTreeMap::from([
+        (
+            format!("/{release_ref}/.codex/SKILLS.md"),
+            skills_markdown.to_string(),
+        ),
+        (
+            format!("/{release_ref}/docs/agent-playbook.md"),
+            "# remote playbook".to_string(),
+        ),
+        (
+            format!("/{release_ref}/docs/figma-ui-coder.md"),
+            "# remote figma ui coder".to_string(),
+        ),
+        (
+            format!("/{release_ref}/.codex/skills/recognizing-layout/SKILL.md"),
+            "# remote recognizing-layout".to_string(),
+        ),
+        (
+            format!("/{release_ref}/.codex/skills/authoring-transform-plan/SKILL.md"),
+            "# remote authoring-transform-plan".to_string(),
+        ),
+    ]);
+    let (base_url, request_rx, server_thread) =
+        start_instruction_response_server(routes).expect("instruction server should start");
+
+    let result = prepare_llm_bundle_in_workspace_with_remote_base_url(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+        Some(base_url.as_str()),
+    )
+    .expect("bundle should build with remote instruction sources");
+
+    assert_eq!(result, "output/agent/llm_bundle.json");
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    assert!(
+        bundle
+            .instructions
+            .skills_guide_markdown
+            .contains("Active Skills")
+    );
+    assert_eq!(
+        bundle.instructions.agent_playbook_markdown,
+        "# remote playbook"
+    );
+    assert_eq!(
+        bundle.instructions.figma_ui_coder_markdown,
+        "# remote figma ui coder"
+    );
+    assert_eq!(bundle.instructions.skill_docs.len(), 2);
+    assert!(bundle.instructions.skill_docs.iter().any(|doc| {
+        doc.path == ".codex/skills/recognizing-layout/SKILL.md"
+            && doc.markdown == "# remote recognizing-layout"
+    }));
+    assert!(bundle.instructions.skill_docs.iter().any(|doc| {
+        doc.path == ".codex/skills/authoring-transform-plan/SKILL.md"
+            && doc.markdown == "# remote authoring-transform-plan"
+    }));
+
+    let requests = collect_server_requests(request_rx);
+    assert_eq!(requests.len(), 5);
+    for request in requests {
+        assert!(request.contains(&format!(" /{release_ref}/")));
+    }
+
+    server_thread
+        .join()
+        .expect("instruction server thread should join");
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_prefers_local_instruction_files_when_available",
+    );
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let result = prepare_llm_bundle_in_workspace_with_remote_base_url(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+        Some("http://127.0.0.1:9"),
+    )
+    .expect("bundle should build from local instruction sources");
+    assert_eq!(result, "output/agent/llm_bundle.json");
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    assert!(
+        bundle
+            .instructions
+            .skills_guide_markdown
+            .contains("Active Skills")
+    );
+    assert_eq!(
+        bundle.instructions.agent_playbook_markdown,
+        "# agent playbook"
+    );
+    assert_eq!(
+        bundle.instructions.figma_ui_coder_markdown,
+        "# figma ui coder"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn generate_ui_with_mock_runner_writes_generated_output() {
     let workspace_root =
         unique_test_workspace_root("generate_ui_with_mock_runner_writes_generated_output");
@@ -679,6 +820,100 @@ fn unique_test_workspace_root(test_name: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace root should be created");
     path
+}
+
+fn collect_server_requests(request_rx: std::sync::mpsc::Receiver<String>) -> Vec<String> {
+    let mut requests = Vec::new();
+    loop {
+        match request_rx.recv_timeout(std::time::Duration::from_millis(250)) {
+            Ok(request) => requests.push(request),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    requests
+}
+
+fn start_instruction_response_server(
+    routes: std::collections::BTreeMap<String, String>,
+) -> Result<
+    (
+        String,
+        std::sync::mpsc::Receiver<String>,
+        std::thread::JoinHandle<()>,
+    ),
+    std::io::Error,
+> {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    listener
+        .set_nonblocking(true)
+        .expect("server should support nonblocking");
+    let address = listener
+        .local_addr()
+        .expect("server should expose local address");
+    let expected_requests = routes.len();
+    let (request_tx, request_rx) = std::sync::mpsc::channel::<String>();
+
+    let server_thread = std::thread::spawn(move || {
+        let mut served_requests = 0usize;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while served_requests < expected_requests && std::time::Instant::now() < deadline {
+            let (mut stream, _) = match listener.accept() {
+                Ok(value) => value,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(_) => break,
+            };
+            served_requests += 1;
+
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .expect("server should set read timeout");
+            let mut request_bytes = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let bytes_read = stream
+                    .read(&mut buffer)
+                    .expect("server should read request bytes");
+                if bytes_read == 0 {
+                    break;
+                }
+                request_bytes.extend_from_slice(&buffer[..bytes_read]);
+                if request_bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let request = String::from_utf8_lossy(&request_bytes).to_string();
+            let _ = request_tx.send(request.clone());
+            let request_path = request
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or("/");
+
+            let (status_line, body) = if let Some(body) = routes.get(request_path) {
+                ("200 OK", body.clone())
+            } else {
+                ("404 Not Found", "{\"error\":\"not found\"}".to_string())
+            };
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("server should write response");
+            stream.flush().expect("server should flush response");
+        }
+    });
+
+    Ok((format!("http://{address}"), request_rx, server_thread))
 }
 
 fn seed_full_fixture_pipeline(workspace_root: &std::path::Path) {

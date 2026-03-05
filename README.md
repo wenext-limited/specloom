@@ -56,6 +56,10 @@ export ANTHROPIC_API_KEY="<your_api_key>"
 specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest
 ```
 
+`prepare-llm-bundle` resolves instruction docs in this order:
+1. local project files (`.codex/SKILLS.md`, `docs/agent-playbook.md`, `docs/figma-ui-coder.md`, and referenced skill docs)
+2. matching GitHub release tag based on CLI version (`v<version>`, then `<version>`)
+
 Expected outputs for this flow:
 
 1. `output/agent/llm_bundle.json`
