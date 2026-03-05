@@ -323,6 +323,10 @@ fn generate_ui_with_mock_runner_writes_generated_output() {
         workspace_root.as_path(),
         &GenerateUiRequest {
             bundle_path: "output/agent/llm_bundle.json".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         &MockAgentRunner::default(),
     )
@@ -365,6 +369,10 @@ fn generate_ui_in_workspace_always_emits_warning_and_trace_artifacts() {
         workspace_root.as_path(),
         &GenerateUiRequest {
             bundle_path: "output/agent/llm_bundle.json".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         &MockAgentRunner::default(),
     )

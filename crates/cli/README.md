@@ -131,6 +131,7 @@ Generate target UI from a bundle:
 
 ```bash
 specloom generate-ui --bundle output/agent/llm_bundle.json
+specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest
 specloom generate-ui --bundle output/agent/llm_bundle.json --output json
 ```
 
@@ -162,6 +163,7 @@ specloom agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID
 | Build `output/agent/llm_bundle.json` from deterministic artifacts | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>"` | text (default) |
 | Build `output/agent/llm_bundle.json` as machine-readable output | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>" --output json` | json |
 | Generate target UI code from bundle path | `specloom generate-ui --bundle output/agent/llm_bundle.json` | text (default) |
+| Generate target UI code from bundle path via Anthropic Claude | `specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest` | text (default) |
 | Generate target UI code from bundle path as machine-readable output | `specloom generate-ui --bundle output/agent/llm_bundle.json --output json` | json |
 | Find candidate nodes via deterministic fuzzy lookup | `specloom agent-tool find-nodes --query "<text>" --output json` | text/json |
 | Read indexed node details | `specloom agent-tool get-node-info --node-id <id>` | text/json |
@@ -174,7 +176,8 @@ Notes:
 3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 4. `prepare-llm-bundle` writes `output/agent/llm_bundle.json`.
 5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
-6. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+6. `--provider anthropic` requires `ANTHROPIC_API_KEY` (or `--api-key`).
+7. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## License
 

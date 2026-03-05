@@ -666,6 +666,56 @@ fn generate_ui_subcommand_reports_generated_artifact_paths() {
 }
 
 #[test]
+fn generate_ui_subcommand_rejects_anthropic_without_api_key() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_ui_subcommand_rejects_anthropic_without_api_key");
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let prepare = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+        ])
+        .output()
+        .unwrap();
+    assert!(prepare.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .env_remove("ANTHROPIC_API_KEY")
+        .args([
+            "generate-ui",
+            "--bundle",
+            "output/agent/llm_bundle.json",
+            "--provider",
+            "anthropic",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.trim().contains(
+        "anthropic provider missing required value(s): ANTHROPIC_API_KEY (or --api-key)"
+    ));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn agent_tool_find_nodes_json_mode_returns_candidates() {
     let workspace_root = unique_cli_workspace_root("agent_tool_find_nodes_json_mode");
 

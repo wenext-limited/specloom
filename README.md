@@ -50,6 +50,10 @@ specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>
 
 # 3) Generate target UI from the prepared bundle
 specloom generate-ui --bundle output/agent/llm_bundle.json
+
+# 3b) Generate with Anthropic Claude (first-class provider support)
+export ANTHROPIC_API_KEY="<your_api_key>"
+specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest
 ```
 
 Expected outputs for this flow:

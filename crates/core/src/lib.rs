@@ -10,7 +10,8 @@ mod hash;
 mod llm_bundle;
 mod ui_spec;
 pub use agent_runner::{
-    AgentGeneratedFile, AgentRunner, AgentRunnerOutput, AgentRunnerRequest, MockAgentRunner,
+    AgentGeneratedFile, AgentRunner, AgentRunnerOutput, AgentRunnerRequest, AnthropicAgentRunner,
+    AnthropicRunnerConfig, MockAgentRunner,
 };
 pub use llm_bundle::{
     BundleArtifactRef, BundleArtifacts, BundleFigmaContext, BundleInstructions, BundleRequest,
@@ -35,6 +36,8 @@ pub enum PipelineError {
     Normalizer(String),
     #[error("ui spec build error: {0}")]
     UiSpecBuild(String),
+    #[error("agent runner error: {0}")]
+    AgentRunner(String),
 }
 
 impl PipelineError {
@@ -63,6 +66,9 @@ impl PipelineError {
             ),
             Self::FetchClient(details) => format!(
                 "fetch client error: {details}. For live fetch, verify `--input live`, `--file-key`, `--node-id`, and `FIGMA_TOKEN` (or `--figma-token`), then confirm file and node permissions in Figma."
+            ),
+            Self::AgentRunner(details) => format!(
+                "agent runner error: {details}. Verify provider settings (`--provider`, `--model`, credentials) and retry."
             ),
             _ => self.to_string(),
         }
@@ -349,6 +355,16 @@ pub fn prepare_llm_bundle_in_workspace(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerateUiRequest {
     pub bundle_path: String,
+    pub provider: GenerateUiProvider,
+    pub model: Option<String>,
+    pub api_key: Option<String>,
+    pub api_base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenerateUiProvider {
+    Mock,
+    Anthropic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -358,8 +374,24 @@ pub struct GenerateUiResult {
 
 pub fn generate_ui(request: &GenerateUiRequest) -> Result<GenerateUiResult, PipelineError> {
     let workspace_root = std::env::current_dir().map_err(io_error)?;
-    let runner = MockAgentRunner;
-    generate_ui_in_workspace(workspace_root.as_path(), request, &runner)
+    let runner: Box<dyn AgentRunner> = match request.provider {
+        GenerateUiProvider::Mock => Box::new(MockAgentRunner),
+        GenerateUiProvider::Anthropic => {
+            let api_key = resolve_anthropic_api_key(request.api_key.as_deref()).ok_or_else(|| {
+                PipelineError::AgentRunner(
+                    "anthropic provider missing required value(s): ANTHROPIC_API_KEY (or --api-key). Provide the missing value(s) and retry.".to_string(),
+                )
+            })?;
+            let model = normalize_optional_field(request.model.as_deref())
+                .unwrap_or_else(|| "claude-3-5-sonnet-latest".to_string());
+            Box::new(AnthropicAgentRunner::new(AnthropicRunnerConfig {
+                api_key,
+                model,
+                api_base_url: normalize_optional_field(request.api_base_url.as_deref()),
+            })?)
+        }
+    };
+    generate_ui_in_workspace(workspace_root.as_path(), request, runner.as_ref())
 }
 
 pub fn generate_ui_in_workspace(
@@ -424,6 +456,21 @@ pub fn generate_ui_in_workspace(
     )?;
 
     Ok(GenerateUiResult { generated_paths })
+}
+
+fn resolve_anthropic_api_key(explicit_value: Option<&str>) -> Option<String> {
+    normalize_optional_field(explicit_value).or_else(|| {
+        std::env::var("ANTHROPIC_API_KEY")
+            .ok()
+            .and_then(|value| normalize_optional_field(Some(value.as_str())))
+    })
+}
+
+fn normalize_optional_field(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|candidate| !candidate.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 pub fn find_nodes(query: &str, top_k: usize) -> Result<FindNodesResult, PipelineError> {

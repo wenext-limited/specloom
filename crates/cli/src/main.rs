@@ -9,7 +9,7 @@ use clap::Parser;
     long_about = "Run deterministic pipeline stages for Figma snapshot processing, spec building, and agent lookup context."
 )]
 #[command(
-    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom prepare-llm-bundle --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\" --target react-tailwind --intent \"Generate login\"\n  specloom generate-ui --bundle output/agent/llm_bundle.json\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
+    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom prepare-llm-bundle --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\" --target react-tailwind --intent \"Generate login\"\n  specloom generate-ui --bundle output/agent/llm_bundle.json\n  specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
 )]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -67,6 +67,18 @@ enum Command {
         /// Path to LLM bundle artifact.
         #[arg(long)]
         bundle: String,
+        /// Provider to execute generation with.
+        #[arg(long, value_enum, default_value_t = GenerateUiProviderOption::Mock)]
+        provider: GenerateUiProviderOption,
+        /// Provider model identifier (default for anthropic: `claude-3-5-sonnet-latest`).
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider API key (for anthropic, falls back to `ANTHROPIC_API_KEY`).
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Override anthropic API base URL (hidden; test use only).
+        #[arg(long, hide = true)]
+        api_base_url: Option<String>,
         /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
@@ -142,6 +154,12 @@ enum AgentToolCommand {
 enum OutputMode {
     Text,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum GenerateUiProviderOption {
+    Mock,
+    Anthropic,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -365,9 +383,23 @@ fn main() {
                     Err(err) => emit_error_and_exit(err, output),
                 }
             }
-            Command::GenerateUi { bundle, output } => {
+            Command::GenerateUi {
+                bundle,
+                provider,
+                model,
+                api_key,
+                api_base_url,
+                output,
+            } => {
                 let request = core::GenerateUiRequest {
                     bundle_path: bundle,
+                    provider: match provider {
+                        GenerateUiProviderOption::Mock => core::GenerateUiProvider::Mock,
+                        GenerateUiProviderOption::Anthropic => core::GenerateUiProvider::Anthropic,
+                    },
+                    model: normalize_optional_field(model.as_deref()),
+                    api_key: normalize_optional_field(api_key.as_deref()),
+                    api_base_url: normalize_optional_field(api_base_url.as_deref()),
                 };
                 match core::generate_ui(&request) {
                     Ok(result) => match output {
