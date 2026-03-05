@@ -10,6 +10,7 @@ fn ui_spec_round_trip() {
             id: "1:2".to_string(),
             name: "Title".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: Vec::new(),
     };
@@ -29,6 +30,7 @@ fn ron_serialization_is_stable() {
             id: "1:2".to_string(),
             name: "Icon".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: Vec::new(),
     };
@@ -70,6 +72,7 @@ fn leaf_nodes_omit_empty_children_in_ron() {
         id: "9:9".to_string(),
         name: "Leaf".to_string(),
         children: Vec::new(),
+        repeat_element_ids: Vec::new(),
     };
 
     let ron = leaf.to_pretty_ron().unwrap();
@@ -86,6 +89,7 @@ fn container_repeat_element_ids_omit_when_empty_and_serialize_when_present() {
             id: "1:2".to_string(),
             name: "Item".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: Vec::new(),
     };
@@ -97,6 +101,7 @@ fn container_repeat_element_ids_omit_when_empty_and_serialize_when_present() {
             id: "1:2".to_string(),
             name: "Item".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: vec!["1:2".to_string()],
     };
@@ -110,75 +115,27 @@ fn container_repeat_element_ids_omit_when_empty_and_serialize_when_present() {
 }
 
 #[test]
-fn materialize_repeats_clears_repeat_element_ids() {
-    let spec = UiSpec::Container {
-        id: "1:1".to_string(),
-        name: "Root".to_string(),
-        text: String::new(),
-        children: vec![UiSpec::Text {
-            id: "1:2".to_string(),
-            name: "Item".to_string(),
-            children: Vec::new(),
-        }],
-        repeat_element_ids: vec!["1:2".to_string()],
+fn leaf_repeat_element_ids_omit_when_empty_and_serialize_when_present() {
+    let without_repeat = UiSpec::Text {
+        id: "9:9".to_string(),
+        name: "Leaf".to_string(),
+        children: Vec::new(),
+        repeat_element_ids: Vec::new(),
+    };
+    let with_repeat = UiSpec::Text {
+        id: "9:9".to_string(),
+        name: "Leaf".to_string(),
+        children: Vec::new(),
+        repeat_element_ids: vec!["a:1".to_string(), "a:2".to_string()],
     };
 
-    let materialized = spec.materialize_repeats().expect("repeat ids should be valid");
-    assert!(materialized.repeat_element_ids().is_empty());
-    assert_eq!(materialized.children().len(), 1);
-    assert_eq!(materialized.children()[0].id(), "1:2");
-}
+    let without_ron = without_repeat.to_pretty_ron().unwrap();
+    let with_ron = with_repeat.to_pretty_ron().unwrap();
 
-#[test]
-fn materialize_repeats_rejects_duplicate_repeat_id() {
-    let spec = UiSpec::Container {
-        id: "1:1".to_string(),
-        name: "Root".to_string(),
-        text: String::new(),
-        children: vec![UiSpec::Text {
-            id: "1:2".to_string(),
-            name: "Item".to_string(),
-            children: Vec::new(),
-        }],
-        repeat_element_ids: vec!["1:2".to_string(), "1:2".to_string()],
-    };
-
-    let err = spec
-        .materialize_repeats()
-        .expect_err("duplicate repeat id should fail");
-    assert_eq!(
-        err,
-        UiSpecRepeatError::DuplicateRepeatElementId {
-            node_id: "1:1".to_string(),
-            child_id: "1:2".to_string(),
-        }
-    );
-}
-
-#[test]
-fn materialize_repeats_rejects_non_direct_child_id() {
-    let spec = UiSpec::Container {
-        id: "1:1".to_string(),
-        name: "Root".to_string(),
-        text: String::new(),
-        children: vec![UiSpec::Text {
-            id: "1:2".to_string(),
-            name: "Item".to_string(),
-            children: Vec::new(),
-        }],
-        repeat_element_ids: vec!["9:9".to_string()],
-    };
-
-    let err = spec
-        .materialize_repeats()
-        .expect_err("repeat id outside direct children should fail");
-    assert_eq!(
-        err,
-        UiSpecRepeatError::RepeatElementIdNotDirectChild {
-            node_id: "1:1".to_string(),
-            child_id: "9:9".to_string(),
-        }
-    );
+    assert!(!without_ron.contains("repeat_element_ids"));
+    assert!(with_ron.contains("repeat_element_ids"));
+    assert!(with_ron.contains("\"a:1\""));
+    assert!(with_ron.contains("\"a:2\""));
 }
 
 #[test]
@@ -214,6 +171,7 @@ fn transform_plan_validate_rejects_missing_node_id() {
             id: "1:2".to_string(),
             name: "Title".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: Vec::new(),
     };
@@ -255,6 +213,7 @@ fn transform_plan_validate_rejects_replace_with_unknown_child() {
                     id: "1:3".to_string(),
                     name: "Label".to_string(),
                     children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
                 }],
                 repeat_element_ids: Vec::new(),
             },
@@ -262,6 +221,7 @@ fn transform_plan_validate_rejects_replace_with_unknown_child() {
                 id: "1:4".to_string(),
                 name: "Footer".to_string(),
                 children: Vec::new(),
+                repeat_element_ids: Vec::new(),
             },
         ],
         repeat_element_ids: Vec::new(),
@@ -302,6 +262,7 @@ fn transform_plan_validate_rejects_non_replace_mode_with_children() {
             id: "1:2".to_string(),
             name: "Label".to_string(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         }],
         repeat_element_ids: Vec::new(),
     };
@@ -345,6 +306,7 @@ fn apply_transform_plan_drop_removes_children_and_sets_button_type() {
                 id: "1:3".to_string(),
                 name: "Buy".to_string(),
                 children: Vec::new(),
+                repeat_element_ids: Vec::new(),
             }],
             repeat_element_ids: Vec::new(),
         }],
@@ -385,11 +347,13 @@ fn apply_transform_plan_keep_preserves_children_and_sets_hstack_type() {
                     id: "1:3".to_string(),
                     name: "Left".to_string(),
                     children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
                 },
                 UiSpec::Text {
                     id: "1:4".to_string(),
                     name: "Right".to_string(),
                     children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
                 },
             ],
             repeat_element_ids: Vec::new(),
@@ -433,11 +397,13 @@ fn apply_transform_plan_replace_with_rewires_children_order() {
                     id: "1:3".to_string(),
                     name: "A".to_string(),
                     children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
                 },
                 UiSpec::Image {
                     id: "1:4".to_string(),
                     name: "Preview".to_string(),
                     children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
                 },
             ],
             repeat_element_ids: Vec::new(),
@@ -463,6 +429,44 @@ fn apply_transform_plan_replace_with_rewires_children_order() {
     assert_eq!(scroll.node_type(), NodeType::ScrollView);
     assert_eq!(scroll.children().len(), 1);
     assert_eq!(scroll.children()[0].id(), "1:4");
+}
+
+#[test]
+fn apply_transform_plan_preserves_repeat_element_ids_when_type_changes() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "Card".to_string(),
+            text: String::new(),
+            children: Vec::new(),
+            repeat_element_ids: vec!["card:1".to_string(), "card:2".to_string()],
+        }],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::VStack,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            confidence: 0.84,
+            reason: "Treat card as vertical stack".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    let card = &transformed.children()[0];
+    assert_eq!(card.node_type(), NodeType::VStack);
+    assert_eq!(
+        card.repeat_element_ids(),
+        &["card:1".to_string(), "card:2".to_string()]
+    );
 }
 
 #[test]

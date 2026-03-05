@@ -12,8 +12,6 @@ pub enum UiSpecBuildError {
     MissingNormalizedNode(String),
     #[error("invalid transform plan: {0}")]
     InvalidTransformPlan(String),
-    #[error("invalid repeat element ids: {0}")]
-    InvalidRepeatElementIds(String),
     #[error("replacement child missing after validation for node {node_id}: {child_id}")]
     ReplacementChildMissingAfterValidation { node_id: String, child_id: String },
 }
@@ -40,12 +38,8 @@ pub fn apply_transform_plan(
     pre_layout: &UiSpec,
     transform_plan: &TransformPlan,
 ) -> Result<UiSpec, UiSpecBuildError> {
-    let expanded_pre_layout = pre_layout
-        .materialize_repeats()
-        .map_err(|err| UiSpecBuildError::InvalidRepeatElementIds(err.to_string()))?;
-
     transform_plan
-        .validate_against_pre_layout(&expanded_pre_layout)
+        .validate_against_pre_layout(pre_layout)
         .map_err(|err| UiSpecBuildError::InvalidTransformPlan(err.to_string()))?;
 
     let decisions_by_node = transform_plan
@@ -54,7 +48,7 @@ pub fn apply_transform_plan(
         .map(|decision| (decision.node_id.as_str(), decision))
         .collect::<BTreeMap<_, _>>();
 
-    apply_transform_node(&expanded_pre_layout, &decisions_by_node)
+    apply_transform_node(pre_layout, &decisions_by_node)
 }
 
 fn build_ui_spec_node(
@@ -96,6 +90,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -104,6 +99,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -114,6 +110,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -124,6 +121,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -135,6 +133,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -143,6 +142,7 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -158,26 +158,31 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Text => UiSpec::Text {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Image => UiSpec::Image {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Shape => UiSpec::Shape {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Vector => UiSpec::Vector {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Button => UiSpec::Button {
             id: node.id.clone(),
@@ -190,21 +195,25 @@ fn build_ui_spec_node(
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::HStack => UiSpec::HStack {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::VStack => UiSpec::VStack {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::ZStack => UiSpec::ZStack {
             id: node.id.clone(),
             name: node.name.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
     })
 }
@@ -248,6 +257,7 @@ fn apply_transform_node(
             node_name(node).to_string(),
             transformed_children,
             container_text(node),
+            node.repeat_element_ids().to_vec(),
         ));
     }
 
@@ -261,59 +271,68 @@ fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {
             name: name.clone(),
             text: text.clone(),
             children,
-            repeat_element_ids: Vec::new(),
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Instance { id, name, .. } => UiSpec::Instance {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Text { id, name, .. } => UiSpec::Text {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Image { id, name, .. } => UiSpec::Image {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Shape { id, name, .. } => UiSpec::Shape {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Vector { id, name, .. } => UiSpec::Vector {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::Button { id, name, .. } => UiSpec::Button {
             id: id.clone(),
             name: name.clone(),
             text: String::new(),
             children,
-            repeat_element_ids: Vec::new(),
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::ScrollView { id, name, .. } => UiSpec::ScrollView {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::HStack { id, name, .. } => UiSpec::HStack {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::VStack { id, name, .. } => UiSpec::VStack {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
         UiSpec::ZStack { id, name, .. } => UiSpec::ZStack {
             id: id.clone(),
             name: name.clone(),
             children,
+            repeat_element_ids: node.repeat_element_ids().to_vec(),
         },
     }
 }
@@ -324,6 +343,7 @@ fn ui_spec_from_suggested_type(
     name: String,
     children: Vec<UiSpec>,
     text: String,
+    repeat_element_ids: Vec<String>,
 ) -> UiSpec {
     match suggested_type {
         SuggestedNodeType::Container => UiSpec::Container {
@@ -331,24 +351,69 @@ fn ui_spec_from_suggested_type(
             name,
             text,
             children,
-            repeat_element_ids: Vec::new(),
+            repeat_element_ids,
         },
-        SuggestedNodeType::Instance => UiSpec::Instance { id, name, children },
-        SuggestedNodeType::Text => UiSpec::Text { id, name, children },
-        SuggestedNodeType::Image => UiSpec::Image { id, name, children },
-        SuggestedNodeType::Shape => UiSpec::Shape { id, name, children },
-        SuggestedNodeType::Vector => UiSpec::Vector { id, name, children },
+        SuggestedNodeType::Instance => UiSpec::Instance {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::Text => UiSpec::Text {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::Image => UiSpec::Image {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::Shape => UiSpec::Shape {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::Vector => UiSpec::Vector {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
         SuggestedNodeType::Button => UiSpec::Button {
             id,
             name,
             text,
             children,
-            repeat_element_ids: Vec::new(),
+            repeat_element_ids,
         },
-        SuggestedNodeType::ScrollView => UiSpec::ScrollView { id, name, children },
-        SuggestedNodeType::HStack => UiSpec::HStack { id, name, children },
-        SuggestedNodeType::VStack => UiSpec::VStack { id, name, children },
-        SuggestedNodeType::ZStack => UiSpec::ZStack { id, name, children },
+        SuggestedNodeType::ScrollView => UiSpec::ScrollView {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::HStack => UiSpec::HStack {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::VStack => UiSpec::VStack {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
+        SuggestedNodeType::ZStack => UiSpec::ZStack {
+            id,
+            name,
+            children,
+            repeat_element_ids,
+        },
     }
 }
 

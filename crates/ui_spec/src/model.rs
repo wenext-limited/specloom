@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 pub const UI_SPEC_VERSION: &str = "2.0";
 
 macro_rules! define_ui_spec_enum {
@@ -31,6 +29,9 @@ macro_rules! define_ui_spec_enum {
                     #[serde(default)]
                     #[serde(skip_serializing_if = "Vec::is_empty")]
                     children: Vec<UiSpec>,
+                    #[serde(default)]
+                    #[serde(skip_serializing_if = "Vec::is_empty")]
+                    repeat_element_ids: Vec<String>,
                 },
             )+
         }
@@ -75,7 +76,7 @@ macro_rules! define_ui_spec_enum {
                         UiSpec::$container_variant { repeat_element_ids, .. } => repeat_element_ids.as_slice(),
                     )+
                     $(
-                        UiSpec::$leaf_variant { .. } => &[],
+                        UiSpec::$leaf_variant { repeat_element_ids, .. } => repeat_element_ids.as_slice(),
                     )+
                 }
             }
@@ -122,124 +123,4 @@ impl UiSpec {
     pub fn to_pretty_ron(&self) -> Result<String, ron::Error> {
         ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::new().struct_names(true))
     }
-
-    pub fn materialize_repeats(&self) -> Result<Self, UiSpecRepeatError> {
-        materialize_repeats_node(self)
-    }
-}
-
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-pub enum UiSpecRepeatError {
-    #[error("duplicate repeat element id for node {node_id}: {child_id}")]
-    DuplicateRepeatElementId { node_id: String, child_id: String },
-    #[error("repeat element id is not a direct child for node {node_id}: {child_id}")]
-    RepeatElementIdNotDirectChild { node_id: String, child_id: String },
-}
-
-fn materialize_repeats_node(node: &UiSpec) -> Result<UiSpec, UiSpecRepeatError> {
-    let children = node
-        .children()
-        .iter()
-        .map(materialize_repeats_node)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    validate_repeat_element_ids(node, children.as_slice())?;
-
-    Ok(match node {
-        UiSpec::Container { id, name, text, .. } => UiSpec::Container {
-            id: id.clone(),
-            name: name.clone(),
-            text: text.clone(),
-            children,
-            repeat_element_ids: Vec::new(),
-        },
-        UiSpec::Instance { id, name, .. } => UiSpec::Instance {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::Text { id, name, .. } => UiSpec::Text {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::Image { id, name, .. } => UiSpec::Image {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::Shape { id, name, .. } => UiSpec::Shape {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::Vector { id, name, .. } => UiSpec::Vector {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::Button { id, name, text, .. } => UiSpec::Button {
-            id: id.clone(),
-            name: name.clone(),
-            text: text.clone(),
-            children,
-            repeat_element_ids: Vec::new(),
-        },
-        UiSpec::ScrollView { id, name, .. } => UiSpec::ScrollView {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::HStack { id, name, .. } => UiSpec::HStack {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::VStack { id, name, .. } => UiSpec::VStack {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-        UiSpec::ZStack { id, name, .. } => UiSpec::ZStack {
-            id: id.clone(),
-            name: name.clone(),
-            children,
-        },
-    })
-}
-
-fn validate_repeat_element_ids(
-    node: &UiSpec,
-    children: &[UiSpec],
-) -> Result<(), UiSpecRepeatError> {
-    let repeat_ids = node.repeat_element_ids();
-    if repeat_ids.is_empty() {
-        return Ok(());
-    }
-
-    let node_id = node.id().to_string();
-    let mut seen = BTreeSet::new();
-    for child_id in repeat_ids {
-        if !seen.insert(child_id.as_str()) {
-            return Err(UiSpecRepeatError::DuplicateRepeatElementId {
-                node_id,
-                child_id: child_id.clone(),
-            });
-        }
-    }
-
-    let direct_child_ids = children
-        .iter()
-        .map(|child| child.id())
-        .collect::<BTreeSet<_>>();
-    for child_id in repeat_ids {
-        if !direct_child_ids.contains(child_id.as_str()) {
-            return Err(UiSpecRepeatError::RepeatElementIdNotDirectChild {
-                node_id: node.id().to_string(),
-                child_id: child_id.clone(),
-            });
-        }
-    }
-
-    Ok(())
 }

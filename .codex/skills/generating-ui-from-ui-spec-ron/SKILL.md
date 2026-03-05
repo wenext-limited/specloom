@@ -30,13 +30,13 @@ If agent context files are missing, run:
 
 ## repeat_element_ids Policy (Required)
 
-`ui_spec.ron` may contain `repeat_element_ids` on container-like nodes.
+`ui_spec.ron` may contain `repeat_element_ids` on any node.
 
 Current project policy:
 
 1. Treat `repeat_element_ids` as optional metadata.
 2. Assume `repeat_element_ids` was inferred upstream during `ui_spec` generation.
-3. Do not invent new `repeat_element_ids` during code generation; if present, use it as a strong hint while staying aligned with concrete `children` in final `ui_spec.ron`.
+3. Do not invent new `repeat_element_ids` during code generation; if present, treat it as repeat-this-node metadata while staying aligned with concrete `children` in final `ui_spec.ron`.
 
 ## Workflow
 
