@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::UiSpec;
+use super::UiSpec;
 
 pub const TRANSFORM_PLAN_VERSION: &str = "transform_plan/1.0";
 

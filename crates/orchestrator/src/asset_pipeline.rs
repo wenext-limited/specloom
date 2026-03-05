@@ -21,7 +21,9 @@ impl Default for AssetManifest {
     }
 }
 
-pub fn build_asset_manifest(normalized: &figma_normalizer::NormalizationOutput) -> AssetManifest {
+pub fn build_asset_manifest(
+    normalized: &crate::figma_client::normalizer::NormalizationOutput,
+) -> AssetManifest {
     let mut assets = Vec::new();
     let mut warnings = Vec::new();
 
@@ -30,7 +32,7 @@ pub fn build_asset_manifest(normalized: &figma_normalizer::NormalizationOutput) 
             .style
             .fills
             .iter()
-            .filter(|fill| fill.kind == figma_normalizer::PaintKind::Image)
+            .filter(|fill| fill.kind == crate::figma_client::normalizer::PaintKind::Image)
             .collect::<Vec<_>>();
 
         for fill in image_fills {
@@ -220,13 +222,15 @@ mod tests {
 
     #[test]
     fn build_asset_manifest_extracts_image_fill_assets_deterministically() {
-        let normalized = figma_normalizer::NormalizationOutput {
-            document: figma_normalizer::NormalizedDocument {
-                schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
-                source: figma_normalizer::NormalizedSource {
+        let normalized = crate::figma_client::normalizer::NormalizationOutput {
+            document: crate::figma_client::normalizer::NormalizedDocument {
+                schema_version: crate::figma_client::normalizer::NORMALIZED_SCHEMA_VERSION
+                    .to_string(),
+                source: crate::figma_client::normalizer::NormalizedSource {
                     file_key: "abc123".to_string(),
                     root_node_id: "1:1".to_string(),
-                    figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
+                    figma_api_version: crate::figma_client::normalizer::FIGMA_API_VERSION
+                        .to_string(),
                 },
                 nodes: vec![
                     image_node("10:1", "figma-image-ref-1", 240.0, 64.0),
@@ -252,14 +256,14 @@ mod tests {
         image_ref: &str,
         width: f32,
         height: f32,
-    ) -> figma_normalizer::NormalizedNode {
-        figma_normalizer::NormalizedNode {
+    ) -> crate::figma_client::normalizer::NormalizedNode {
+        crate::figma_client::normalizer::NormalizedNode {
             id: id.to_string(),
             parent_id: Some("1:1".to_string()),
             name: "Image".to_string(),
-            kind: figma_normalizer::NodeKind::Rectangle,
+            kind: crate::figma_client::normalizer::NodeKind::Rectangle,
             visible: true,
-            bounds: figma_normalizer::Bounds {
+            bounds: crate::figma_client::normalizer::Bounds {
                 x: 0.0,
                 y: 0.0,
                 w: width,
@@ -267,17 +271,17 @@ mod tests {
             },
             layout: None,
             constraints: None,
-            style: figma_normalizer::NodeStyle {
+            style: crate::figma_client::normalizer::NodeStyle {
                 opacity: 1.0,
                 corner_radius: None,
-                fills: vec![figma_normalizer::Paint {
-                    kind: figma_normalizer::PaintKind::Image,
+                fills: vec![crate::figma_client::normalizer::Paint {
+                    kind: crate::figma_client::normalizer::PaintKind::Image,
                     color: None,
                     image_ref: Some(image_ref.to_string()),
                 }],
                 strokes: Vec::new(),
             },
-            component: figma_normalizer::ComponentMetadata {
+            component: crate::figma_client::normalizer::ComponentMetadata {
                 component_id: None,
                 component_set_id: None,
                 instance_of: None,

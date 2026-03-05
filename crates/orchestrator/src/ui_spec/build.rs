@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{
+use super::{
     ChildPolicyMode, NodeType, SuggestedNodeType, TransformDecision, TransformPlan, UiSpec,
 };
 
@@ -19,7 +19,7 @@ pub enum UiSpecBuildError {
 }
 
 pub fn build_pre_layout_spec(
-    normalized: &figma_normalizer::NormalizationOutput,
+    normalized: &crate::figma_client::normalizer::NormalizationOutput,
 ) -> Result<UiSpec, UiSpecBuildError> {
     let nodes_by_id = normalized
         .document
@@ -57,7 +57,7 @@ pub fn apply_transform_plan(
 
 fn build_ui_spec_node(
     node_id: &str,
-    nodes_by_id: &BTreeMap<&str, &figma_normalizer::NormalizedNode>,
+    nodes_by_id: &BTreeMap<&str, &crate::figma_client::normalizer::NormalizedNode>,
 ) -> Result<UiSpec, UiSpecBuildError> {
     let node = nodes_by_id
         .get(node_id)
@@ -522,22 +522,22 @@ fn is_image_like(node: &UiSpec) -> bool {
     matches!(node.node_type(), NodeType::Image | NodeType::Vector)
 }
 
-fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
+fn map_node_type(node: &crate::figma_client::normalizer::NormalizedNode) -> NodeType {
     match node.kind {
-        figma_normalizer::NodeKind::Frame
-        | figma_normalizer::NodeKind::Group
-        | figma_normalizer::NodeKind::Component
-        | figma_normalizer::NodeKind::ComponentSet => NodeType::Container,
-        figma_normalizer::NodeKind::Instance => NodeType::Instance,
-        figma_normalizer::NodeKind::Text => NodeType::Text,
-        figma_normalizer::NodeKind::Rectangle
-        | figma_normalizer::NodeKind::Ellipse
-        | figma_normalizer::NodeKind::Star => {
+        crate::figma_client::normalizer::NodeKind::Frame
+        | crate::figma_client::normalizer::NodeKind::Group
+        | crate::figma_client::normalizer::NodeKind::Component
+        | crate::figma_client::normalizer::NodeKind::ComponentSet => NodeType::Container,
+        crate::figma_client::normalizer::NodeKind::Instance => NodeType::Instance,
+        crate::figma_client::normalizer::NodeKind::Text => NodeType::Text,
+        crate::figma_client::normalizer::NodeKind::Rectangle
+        | crate::figma_client::normalizer::NodeKind::Ellipse
+        | crate::figma_client::normalizer::NodeKind::Star => {
             let has_image_fill = node
                 .style
                 .fills
                 .iter()
-                .any(|fill| fill.kind == figma_normalizer::PaintKind::Image);
+                .any(|fill| fill.kind == crate::figma_client::normalizer::PaintKind::Image);
 
             if has_image_fill {
                 NodeType::Image
@@ -545,12 +545,12 @@ fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
                 NodeType::Shape
             }
         }
-        figma_normalizer::NodeKind::Vector => {
+        crate::figma_client::normalizer::NodeKind::Vector => {
             let has_image_fill = node
                 .style
                 .fills
                 .iter()
-                .any(|fill| fill.kind == figma_normalizer::PaintKind::Image);
+                .any(|fill| fill.kind == crate::figma_client::normalizer::PaintKind::Image);
 
             if has_image_fill {
                 NodeType::Image
@@ -558,7 +558,7 @@ fn map_node_type(node: &figma_normalizer::NormalizedNode) -> NodeType {
                 NodeType::Vector
             }
         }
-        figma_normalizer::NodeKind::Unknown => {
+        crate::figma_client::normalizer::NodeKind::Unknown => {
             if node.children.is_empty() {
                 NodeType::Vector
             } else {

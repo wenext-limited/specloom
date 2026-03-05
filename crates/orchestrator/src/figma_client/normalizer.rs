@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
@@ -32,7 +30,7 @@ pub struct NormalizationOutput {
 }
 
 pub fn normalize_snapshot(
-    snapshot: &figma_client::RawFigmaSnapshot,
+    snapshot: &super::RawFigmaSnapshot,
 ) -> Result<NormalizationOutput, NormalizationError> {
     let payload = snapshot.payload.as_object().ok_or_else(|| {
         NormalizationError::InvalidPayloadField("payload must be a JSON object".to_string())
@@ -658,9 +656,10 @@ mod tests {
 
     #[test]
     fn normalize_snapshot_maps_minimal_document_tree() {
-        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
-            .expect("request should be valid");
-        let snapshot = figma_client::fetch_snapshot_from_fixture(
+        let request =
+            crate::figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+                .expect("request should be valid");
+        let snapshot = crate::figma_client::fetch_snapshot_from_fixture(
             &request,
             r#"{
                 "document": {
@@ -706,9 +705,10 @@ mod tests {
 
     #[test]
     fn normalize_snapshot_traverses_instance_children() {
-        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
-            .expect("request should be valid");
-        let snapshot = figma_client::fetch_snapshot_from_fixture(
+        let request =
+            crate::figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+                .expect("request should be valid");
+        let snapshot = crate::figma_client::fetch_snapshot_from_fixture(
             &request,
             r#"{
                 "document": {
@@ -760,9 +760,10 @@ mod tests {
 
     #[test]
     fn normalize_snapshot_preserves_unsupported_fields_in_passthrough() {
-        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
-            .expect("request should be valid");
-        let snapshot = figma_client::fetch_snapshot_from_fixture(
+        let request =
+            crate::figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+                .expect("request should be valid");
+        let snapshot = crate::figma_client::fetch_snapshot_from_fixture(
             &request,
             r#"{
                 "document": {
@@ -788,9 +789,10 @@ mod tests {
 
     #[test]
     fn normalize_snapshot_prunes_null_and_empty_passthrough_values() {
-        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
-            .expect("request should be valid");
-        let snapshot = figma_client::fetch_snapshot_from_fixture(
+        let request =
+            crate::figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+                .expect("request should be valid");
+        let snapshot = crate::figma_client::fetch_snapshot_from_fixture(
             &request,
             r#"{
                 "document": {
@@ -835,10 +837,12 @@ mod tests {
 
     #[test]
     fn normalize_snapshot_rejects_missing_document_payload() {
-        let request = figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
-            .expect("request should be valid");
-        let snapshot = figma_client::fetch_snapshot_from_fixture(&request, r#"{"components":{}}"#)
-            .expect("fixture should parse");
+        let request =
+            crate::figma_client::FetchNodesRequest::new("abc123".to_string(), "1:1".to_string())
+                .expect("request should be valid");
+        let snapshot =
+            crate::figma_client::fetch_snapshot_from_fixture(&request, r#"{"components":{}}"#)
+                .expect("fixture should parse");
 
         let err = super::normalize_snapshot(&snapshot).expect_err("missing document should fail");
         assert!(

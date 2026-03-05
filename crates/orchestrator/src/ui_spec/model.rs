@@ -1,5 +1,3 @@
-pub const UI_SPEC_VERSION: &str = "2.0";
-
 macro_rules! define_ui_spec_enum {
     (
         containers: [$($container_variant:ident),+ $(,)?],
@@ -112,14 +110,6 @@ impl Default for UiSpec {
 }
 
 impl UiSpec {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn to_pretty_json(&self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec_pretty(self)
-    }
-
     pub fn to_pretty_ron(&self) -> Result<String, ron::Error> {
         ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::new().struct_names(true))
     }

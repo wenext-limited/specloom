@@ -177,52 +177,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
-name = "forge-agent-context"
+name = "forge-figma-core"
 version = "0.2.0"
 dependencies = [
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "forge-asset-pipeline"
-version = "0.2.0"
-dependencies = [
- "forge-figma-normalizer",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "forge-figma-client"
-version = "0.2.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "forge-figma-normalizer"
-version = "0.2.0"
-dependencies = [
- "forge-figma-client",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "forge-figma-orchestrator"
-version = "0.2.0"
-dependencies = [
- "forge-agent-context",
- "forge-asset-pipeline",
- "forge-figma-client",
- "forge-figma-normalizer",
- "forge-ui-spec",
  "reqwest",
  "ron",
  "serde",
@@ -235,31 +192,9 @@ name = "forge-figma-pipeline"
 version = "0.2.0"
 dependencies = [
  "clap",
- "forge-figma-client",
- "forge-figma-orchestrator",
+ "forge-figma-core",
  "serde_json",
  "url",
-]
-
-[[package]]
-name = "forge-layout-infer"
-version = "0.2.0"
-dependencies = [
- "forge-figma-normalizer",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "forge-ui-spec"
-version = "0.2.0"
-dependencies = [
- "forge-figma-normalizer",
- "forge-layout-infer",
- "ron",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]

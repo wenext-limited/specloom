@@ -2,6 +2,11 @@
 
 use std::path::Path;
 
+mod agent_context;
+mod asset_pipeline;
+pub mod figma_client;
+mod ui_spec;
+
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum PipelineError {
     #[error("unsupported feature: {0}")]
@@ -508,7 +513,8 @@ fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
         FETCH_ARTIFACT_RELATIVE_PATH,
     )?;
 
-    let normalized = figma_normalizer::normalize_snapshot(&snapshot).map_err(normalizer_error)?;
+    let normalized =
+        crate::figma_client::normalizer::normalize_snapshot(&snapshot).map_err(normalizer_error)?;
     let output_path = workspace_root.join(NORMALIZED_ARTIFACT_RELATIVE_PATH);
     write_bytes(
         output_path.as_path(),
@@ -521,7 +527,7 @@ fn run_normalize_stage(workspace_root: &Path) -> Result<String, PipelineError> {
 }
 
 fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
+    let normalized = read_required_json::<crate::figma_client::normalizer::NormalizationOutput>(
         workspace_root,
         NORMALIZED_ARTIFACT_RELATIVE_PATH,
     )?;
@@ -567,7 +573,7 @@ struct NodeMapArtifact {
 }
 
 fn build_node_map_artifact(
-    normalized: &figma_normalizer::NormalizationOutput,
+    normalized: &crate::figma_client::normalizer::NormalizationOutput,
 ) -> Result<NodeMapArtifact, serde_json::Error> {
     let mut nodes = std::collections::BTreeMap::new();
     for node in &normalized.document.nodes {
@@ -922,7 +928,7 @@ fn append_trace_event(
 }
 
 fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineError> {
-    let normalized = read_required_json::<figma_normalizer::NormalizationOutput>(
+    let normalized = read_required_json::<crate::figma_client::normalizer::NormalizationOutput>(
         workspace_root,
         NORMALIZED_ARTIFACT_RELATIVE_PATH,
     )?;
@@ -992,7 +998,7 @@ fn fetch_client_error(err: figma_client::FetchClientError) -> PipelineError {
     PipelineError::FetchClient(err.to_string())
 }
 
-fn normalizer_error(err: figma_normalizer::NormalizationError) -> PipelineError {
+fn normalizer_error(err: crate::figma_client::normalizer::NormalizationError) -> PipelineError {
     PipelineError::Normalizer(err.to_string())
 }
 

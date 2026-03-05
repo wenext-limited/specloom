@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+pub mod normalizer;
 
 use serde_json::{Value, json};
 

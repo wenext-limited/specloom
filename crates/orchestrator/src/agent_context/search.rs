@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::SearchIndexEntry;
+use super::SearchIndexEntry;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -198,7 +198,7 @@ fn is_ambiguous(matches: &[SearchMatch]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::SearchIndexEntry;
+    use super::super::SearchIndexEntry;
 
     use super::*;
 

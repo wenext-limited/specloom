@@ -188,7 +188,7 @@ fn main() {
         match command {
             Command::Fetch { input, output } => {
                 let config = fetch_config_or_exit(&input, output);
-                match orchestrator::run_stage_with_config("fetch", &config) {
+                match core::run_stage_with_config("fetch", &config) {
                     Ok(result) => match output {
                         OutputMode::Text => {
                             println!("stage={} output={}", result.stage_name, result.output_dir);
@@ -205,7 +205,7 @@ fn main() {
                 }
             }
             Command::Stages { output } => {
-                let stages = orchestrator::pipeline_stage_output_dirs();
+                let stages = core::pipeline_stage_output_dirs();
                 match output {
                     OutputMode::Text => {
                         for (stage, output) in stages {
@@ -228,7 +228,7 @@ fn main() {
                     }
                 }
             }
-            Command::RunStage { stage, output } => match orchestrator::run_stage(&stage) {
+            Command::RunStage { stage, output } => match core::run_stage(&stage) {
                 Ok(result) => match output {
                     OutputMode::Text => {
                         println!("stage={} output={}", result.stage_name, result.output_dir);
@@ -247,7 +247,7 @@ fn main() {
                 let config = fetch_config_for_generate_or_exit(&input, output);
                 match output {
                     OutputMode::Text => {
-                        let stage_names = orchestrator::pipeline_stage_names();
+                        let stage_names = core::pipeline_stage_names();
                         let total_stages = stage_names.len();
                         println!(
                             "pipeline=generate mode={} stages={total_stages}",
@@ -258,7 +258,7 @@ fn main() {
                         for (index, stage_name) in stage_names.into_iter().enumerate() {
                             let position = index + 1;
                             println!("[{position}/{total_stages}] RUN  stage={stage_name}");
-                            match orchestrator::run_stage_with_config(stage_name, &config) {
+                            match core::run_stage_with_config(stage_name, &config) {
                                 Ok(result) => {
                                     println!(
                                         "[{position}/{total_stages}] DONE stage={} output={}",
@@ -288,7 +288,7 @@ fn main() {
                             }
                         }
                     }
-                    OutputMode::Json => match orchestrator::run_all_with_config(&config) {
+                    OutputMode::Json => match core::run_all_with_config(&config) {
                         Ok(results) => {
                             let results = results
                                 .into_iter()
@@ -318,7 +318,7 @@ fn main() {
                     query,
                     top_k,
                     output,
-                } => match orchestrator::find_nodes(query.as_str(), top_k) {
+                } => match core::find_nodes(query.as_str(), top_k) {
                     Ok(result) => match output {
                         OutputMode::Text => {
                             println!(
@@ -345,7 +345,7 @@ fn main() {
                     Err(err) => emit_error_and_exit(err, output),
                 },
                 AgentToolCommand::GetNodeInfo { node_id, output } => {
-                    match orchestrator::get_node_info(node_id.as_str()) {
+                    match core::get_node_info(node_id.as_str()) {
                         Ok(result) => match output {
                             OutputMode::Text => {
                                 if let Some(node) = result.node {
@@ -391,7 +391,7 @@ fn main() {
                                 output,
                             )
                         });
-                    let request = figma_client::LiveScreenshotRequest::new(
+                    let request = core::figma_client::LiveScreenshotRequest::new(
                         file_key,
                         node_id,
                         figma_token,
@@ -399,7 +399,7 @@ fn main() {
                     )
                     .unwrap_or_else(|err| emit_fetch_error_and_exit(err, output));
 
-                    match figma_client::fetch_node_screenshot_live(&request) {
+                    match core::figma_client::fetch_node_screenshot_live(&request) {
                         Ok(result) => match output {
                             OutputMode::Text => {
                                 println!(
@@ -421,7 +421,7 @@ fn main() {
             },
             _ => {
                 let stage_name = command.stage_name();
-                if let Some((_, output_dir)) = orchestrator::pipeline_stage_output_dirs()
+                if let Some((_, output_dir)) = core::pipeline_stage_output_dirs()
                     .into_iter()
                     .find(|(name, _)| *name == stage_name)
                 {
@@ -465,7 +465,7 @@ fn json_escape(value: &str) -> String {
     escaped
 }
 
-fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -> ! {
+fn emit_error_and_exit(error: core::PipelineError, output: OutputMode) -> ! {
     let message = error.actionable_message();
     match output {
         OutputMode::Text => eprintln!("{message}"),
@@ -476,7 +476,7 @@ fn emit_error_and_exit(error: orchestrator::PipelineError, output: OutputMode) -
     std::process::exit(2);
 }
 
-fn emit_fetch_error_and_exit(error: figma_client::FetchClientError, output: OutputMode) -> ! {
+fn emit_fetch_error_and_exit(error: core::figma_client::FetchClientError, output: OutputMode) -> ! {
     let message = error.to_string();
     match output {
         OutputMode::Text => eprintln!("{message}"),
@@ -485,33 +485,30 @@ fn emit_fetch_error_and_exit(error: figma_client::FetchClientError, output: Outp
     std::process::exit(2);
 }
 
-fn find_nodes_status_label(status: &orchestrator::FindNodesStatus) -> &'static str {
+fn find_nodes_status_label(status: &core::FindNodesStatus) -> &'static str {
     match status {
-        orchestrator::FindNodesStatus::Ok => "ok",
-        orchestrator::FindNodesStatus::LowConfidence => "low_confidence",
-        orchestrator::FindNodesStatus::NoMatch => "no_match",
-        orchestrator::FindNodesStatus::Ambiguous => "ambiguous",
+        core::FindNodesStatus::Ok => "ok",
+        core::FindNodesStatus::LowConfidence => "low_confidence",
+        core::FindNodesStatus::NoMatch => "no_match",
+        core::FindNodesStatus::Ambiguous => "ambiguous",
     }
 }
 
-fn node_info_status_label(status: &orchestrator::NodeInfoStatus) -> &'static str {
+fn node_info_status_label(status: &core::NodeInfoStatus) -> &'static str {
     match status {
-        orchestrator::NodeInfoStatus::Ok => "ok",
-        orchestrator::NodeInfoStatus::NotFound => "not_found",
+        core::NodeInfoStatus::Ok => "ok",
+        core::NodeInfoStatus::NotFound => "not_found",
     }
 }
 
-fn fetch_config_or_exit(
-    input: &FetchInputOptions,
-    output: OutputMode,
-) -> orchestrator::PipelineRunConfig {
+fn fetch_config_or_exit(input: &FetchInputOptions, output: OutputMode) -> core::PipelineRunConfig {
     build_fetch_config(input).unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
 }
 
 fn fetch_config_for_generate_or_exit(
     input: &GenerateInputOptions,
     output: OutputMode,
-) -> orchestrator::PipelineRunConfig {
+) -> core::PipelineRunConfig {
     let fetch_input = FetchInputOptions {
         input: input.input,
         snapshot_path: input.snapshot_path.clone(),
@@ -525,11 +522,9 @@ fn fetch_config_for_generate_or_exit(
         .unwrap_or_else(|message| emit_usage_error_and_exit(&message, output))
 }
 
-fn build_fetch_config(
-    input: &FetchInputOptions,
-) -> Result<orchestrator::PipelineRunConfig, String> {
+fn build_fetch_config(input: &FetchInputOptions) -> Result<core::PipelineRunConfig, String> {
     match input.input {
-        InputMode::Fixture => Ok(orchestrator::PipelineRunConfig::default()),
+        InputMode::Fixture => Ok(core::PipelineRunConfig::default()),
         InputMode::Live => {
             let parsed_quick_link = normalize_optional_field(input.figma_url.as_deref())
                 .map(|url| parse_figma_quick_link(url.as_str()))
@@ -566,8 +561,8 @@ fn build_fetch_config(
                 ));
             }
 
-            Ok(orchestrator::PipelineRunConfig {
-                fetch_mode: orchestrator::FetchMode::Live(orchestrator::LiveFetchConfig {
+            Ok(core::PipelineRunConfig {
+                fetch_mode: core::FetchMode::Live(core::LiveFetchConfig {
                     file_key: file_key.expect("checked above"),
                     node_id: node_id.expect("checked above"),
                     figma_token: figma_token.expect("checked above"),
@@ -583,8 +578,8 @@ fn build_fetch_config(
                         .to_string(),
                 );
             }
-            Ok(orchestrator::PipelineRunConfig {
-                fetch_mode: orchestrator::FetchMode::Snapshot(orchestrator::SnapshotFetchConfig {
+            Ok(core::PipelineRunConfig {
+                fetch_mode: core::FetchMode::Snapshot(core::SnapshotFetchConfig {
                     snapshot_path: snapshot_path.expect("checked above"),
                 }),
             })

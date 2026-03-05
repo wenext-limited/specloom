@@ -2,9 +2,7 @@
 
 mod search;
 
-pub use search::{
-    SearchMatch, SearchResult, SearchStatus, classify_status, normalize_tokens, rank_candidates,
-};
+pub use search::{SearchStatus, normalize_tokens, rank_candidates};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,6 +21,7 @@ impl AgentContext {
         serde_json::to_vec_pretty(self)
     }
 
+    #[cfg(test)]
     pub fn sample() -> Self {
         Self {
             version: "agent_context/1.0".to_string(),
@@ -108,6 +107,7 @@ pub struct GenerationWarnings {
 }
 
 impl GenerationWarnings {
+    #[cfg(test)]
     pub fn sample() -> Self {
         Self {
             version: "generation_warnings/1.0".to_string(),

@@ -178,13 +178,7 @@ Current known gap:
 ## 9. Crate Responsibilities (Current Workspace)
 
 1. `crates/cli` (`forge-figma-pipeline` package, `forge` binary): CLI command surface and output formatting.
-2. `crates/figma_client`: fixture/live/snapshot fetch + screenshot API client contracts.
-3. `crates/figma_normalizer`: canonical normalization with explicit warnings and passthrough fields.
-4. `crates/layout_infer`: deterministic layout inference library (not in default orchestration).
-5. `crates/ui_spec`: pre-layout build + transform-plan validation/application + final spec emission.
-6. `crates/agent_context`: search contracts, token normalization, deterministic ranking.
-7. `crates/asset_pipeline`: deterministic image-fill manifest generation.
-8. `crates/orchestrator`: stage execution, artifact IO, error shaping, and tool wrappers.
+2. `crates/orchestrator` (`forge-figma-core` package): core contracts and stage execution runtime including fetch/screenshot client APIs, normalization, ui-spec transform logic, agent-context lookup, and asset manifest generation.
 
 ## 10. Determinism and Safety Guarantees
 
