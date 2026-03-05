@@ -307,6 +307,9 @@ fn prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_
     let workspace_root = unique_test_workspace_root(
         "prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing",
     );
+    let config_root = unique_test_workspace_root(
+        "prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing-config-root",
+    );
     seed_full_fixture_pipeline(workspace_root.as_path());
 
     let version = env!("CARGO_PKG_VERSION");
@@ -348,7 +351,7 @@ Use transform plan guidance.
     let (base_url, request_rx, server_thread) =
         start_instruction_response_server(routes).expect("instruction server should start");
 
-    let result = prepare_llm_bundle_in_workspace_with_remote_base_url(
+    let result = prepare_llm_bundle_in_workspace_with_instruction_overrides(
         workspace_root.as_path(),
         &PrepareLlmBundleRequest {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
@@ -356,6 +359,7 @@ Use transform plan guidance.
             intent: "Generate production-ready login screen".to_string(),
         },
         Some(base_url.as_str()),
+        Some(config_root.as_path()),
     )
     .expect("bundle should build with remote instruction sources");
 
@@ -398,7 +402,22 @@ Use transform plan guidance.
     server_thread
         .join()
         .expect("instruction server thread should join");
+    let cache_root = config_root.join("skills_cache").join(release_ref);
+    assert!(cache_root.join(".codex/SKILLS.md").is_file());
+    assert!(cache_root.join("docs/agent-playbook.md").is_file());
+    assert!(cache_root.join("docs/figma-ui-coder.md").is_file());
+    assert!(
+        cache_root
+            .join(".codex/skills/recognizing-layout/SKILL.md")
+            .is_file()
+    );
+    assert!(
+        cache_root
+            .join(".codex/skills/authoring-transform-plan/SKILL.md")
+            .is_file()
+    );
     let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&config_root);
 }
 
 #[test]
@@ -409,7 +428,7 @@ fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
     seed_full_fixture_pipeline(workspace_root.as_path());
     seed_bundle_instruction_sources(workspace_root.as_path());
 
-    let result = prepare_llm_bundle_in_workspace_with_remote_base_url(
+    let result = prepare_llm_bundle_in_workspace_with_instruction_overrides(
         workspace_root.as_path(),
         &PrepareLlmBundleRequest {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
@@ -417,6 +436,7 @@ fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
             intent: "Generate production-ready login screen".to_string(),
         },
         Some("http://127.0.0.1:9"),
+        None,
     )
     .expect("bundle should build from local instruction sources");
     assert_eq!(result, "output/agent/llm_bundle.json");
@@ -441,6 +461,54 @@ fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
     );
 
     let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present",
+    );
+    let config_root = unique_test_workspace_root(
+        "prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present-config-root",
+    );
+    seed_full_fixture_pipeline(workspace_root.as_path());
+
+    let version = env!("CARGO_PKG_VERSION");
+    let release_ref = format!("v{version}");
+    seed_cached_bundle_instruction_sources(config_root.as_path(), release_ref.as_str());
+
+    let result = prepare_llm_bundle_in_workspace_with_instruction_overrides(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+        Some("http://127.0.0.1:9"),
+        Some(config_root.as_path()),
+    )
+    .expect("bundle should build from cached instruction sources");
+    assert_eq!(result, "output/agent/llm_bundle.json");
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    assert_eq!(
+        bundle.instructions.agent_playbook_markdown,
+        "# cached agent playbook"
+    );
+    assert_eq!(
+        bundle.instructions.figma_ui_coder_markdown,
+        "# cached figma ui coder"
+    );
+    assert!(bundle.instructions.skill_docs.iter().any(|doc| {
+        doc.path == ".codex/skills/recognizing-layout/SKILL.md"
+            && doc.markdown == "# cached recognizing-layout"
+    }));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&config_root);
 }
 
 #[test]
@@ -871,6 +939,9 @@ fn start_instruction_response_server(
             served_requests += 1;
 
             stream
+                .set_nonblocking(false)
+                .expect("server stream should be blocking");
+            stream
                 .set_read_timeout(Some(std::time::Duration::from_secs(2)))
                 .expect("server should set read timeout");
             let mut request_bytes = Vec::new();
@@ -980,4 +1051,45 @@ Use transform plan guidance.
     let figma_ui_coder_path = workspace_root.join("docs/figma-ui-coder.md");
     std::fs::write(figma_ui_coder_path.as_path(), "# figma ui coder")
         .expect("figma ui coder doc should be writable");
+}
+
+fn seed_cached_bundle_instruction_sources(config_root: &std::path::Path, release_ref: &str) {
+    let cache_root = config_root.join("skills_cache").join(release_ref);
+    let skills_guide_path = cache_root.join(".codex/SKILLS.md");
+    if let Some(parent) = skills_guide_path.parent() {
+        std::fs::create_dir_all(parent).expect("cached skills guide parent should be creatable");
+    }
+    std::fs::write(
+        skills_guide_path.as_path(),
+        r#"# Project Skills Guide
+
+## Active Skills
+
+1. `recognizing-layout`
+Path: `.codex/skills/recognizing-layout/SKILL.md`
+Use layout guidance.
+"#,
+    )
+    .expect("cached skills guide should be writable");
+
+    let recognizing_layout_path = cache_root.join(".codex/skills/recognizing-layout/SKILL.md");
+    if let Some(parent) = recognizing_layout_path.parent() {
+        std::fs::create_dir_all(parent).expect("cached skill parent should be creatable");
+    }
+    std::fs::write(
+        recognizing_layout_path.as_path(),
+        "# cached recognizing-layout",
+    )
+    .expect("cached skill should be writable");
+
+    let playbook_path = cache_root.join("docs/agent-playbook.md");
+    if let Some(parent) = playbook_path.parent() {
+        std::fs::create_dir_all(parent).expect("cached playbook parent should be creatable");
+    }
+    std::fs::write(playbook_path.as_path(), "# cached agent playbook")
+        .expect("cached playbook should be writable");
+
+    let figma_ui_coder_path = cache_root.join("docs/figma-ui-coder.md");
+    std::fs::write(figma_ui_coder_path.as_path(), "# cached figma ui coder")
+        .expect("cached figma ui coder should be writable");
 }

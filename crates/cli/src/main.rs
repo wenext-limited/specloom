@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use clap::Parser;
+use serde::Deserialize;
 
 #[derive(Debug, Parser)]
 #[command(name = "specloom")]
@@ -73,7 +74,7 @@ enum Command {
         /// Provider model identifier (default for anthropic: `claude-3-5-sonnet-latest`).
         #[arg(long)]
         model: Option<String>,
-        /// Provider API key (for anthropic, falls back to `ANTHROPIC_API_KEY`).
+        /// Provider API key (for anthropic, falls back to `ANTHROPIC_API_KEY` and global config).
         #[arg(long)]
         api_key: Option<String>,
         /// Override anthropic API base URL (hidden; test use only).
@@ -139,7 +140,7 @@ enum AgentToolCommand {
         /// Figma node id (`:` or `-` format accepted).
         #[arg(long)]
         node_id: String,
-        /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
+        /// Figma personal access token (falls back to `FIGMA_TOKEN` and global config).
         #[arg(long)]
         figma_token: Option<String>,
         #[arg(long, hide = true)]
@@ -179,7 +180,7 @@ struct FetchInputOptions {
     /// Figma node id (used with `--input live`, optional when `--figma-url` is provided).
     #[arg(long)]
     node_id: Option<String>,
-    /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
+    /// Figma personal access token (falls back to `FIGMA_TOKEN` and global config).
     #[arg(long)]
     figma_token: Option<String>,
     #[arg(long, hide = true)]
@@ -203,7 +204,7 @@ struct GenerateInputOptions {
     /// Figma node id (used with `--input live`, optional when `--figma-url` is provided).
     #[arg(long)]
     node_id: Option<String>,
-    /// Figma personal access token (falls back to `FIGMA_TOKEN` env var).
+    /// Figma personal access token (falls back to `FIGMA_TOKEN` and global config).
     #[arg(long)]
     figma_token: Option<String>,
     #[arg(long, hide = true)]
@@ -222,6 +223,33 @@ enum InputMode {
 struct ParsedFigmaQuickLink {
     file_key: String,
     node_id: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecloomConfig {
+    auth: Option<SpecloomAuthConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecloomAuthConfig {
+    figma_token: Option<String>,
+    anthropic_api_key: Option<String>,
+}
+
+impl SpecloomConfig {
+    fn figma_token(&self) -> Option<String> {
+        self.auth
+            .as_ref()
+            .and_then(|auth| normalize_optional_field(auth.figma_token.as_deref()))
+    }
+
+    fn anthropic_api_key(&self) -> Option<String> {
+        self.auth
+            .as_ref()
+            .and_then(|auth| normalize_optional_field(auth.anthropic_api_key.as_deref()))
+    }
 }
 
 fn main() {
@@ -391,6 +419,7 @@ fn main() {
                 api_base_url,
                 output,
             } => {
+                let config = load_specloom_config_or_exit(output);
                 let request = core::GenerateUiRequest {
                     bundle_path: bundle,
                     provider: match provider {
@@ -398,7 +427,9 @@ fn main() {
                         GenerateUiProviderOption::Anthropic => core::GenerateUiProvider::Anthropic,
                     },
                     model: normalize_optional_field(model.as_deref()),
-                    api_key: normalize_optional_field(api_key.as_deref()),
+                    api_key: normalize_optional_field(api_key.as_deref())
+                        .or_else(anthropic_api_key_from_env)
+                        .or_else(|| config.anthropic_api_key()),
                     api_base_url: normalize_optional_field(api_base_url.as_deref()),
                 };
                 match core::generate_ui(&request) {
@@ -495,8 +526,10 @@ fn main() {
                     figma_api_base_url,
                     output,
                 } => {
+                    let config = load_specloom_config_or_exit(output);
                     let figma_token = normalize_optional_field(figma_token.as_deref())
                         .or_else(figma_token_from_env)
+                        .or_else(|| config.figma_token())
                         .unwrap_or_else(|| {
                             emit_usage_error_and_exit(
                                 "get-node-screenshot missing required value(s): FIGMA_TOKEN (or --figma-token). Provide the missing value(s) and retry.",
@@ -640,6 +673,7 @@ fn build_fetch_config(input: &FetchInputOptions) -> Result<core::PipelineRunConf
     match input.input {
         InputMode::Fixture => Ok(core::PipelineRunConfig::default()),
         InputMode::Live => {
+            let config = load_specloom_config()?;
             let parsed_quick_link = normalize_optional_field(input.figma_url.as_deref())
                 .map(|url| parse_figma_quick_link(url.as_str()))
                 .transpose()?;
@@ -654,7 +688,8 @@ fn build_fetch_config(input: &FetchInputOptions) -> Result<core::PipelineRunConf
                     .map(|parsed| parsed.node_id.clone())
             });
             let figma_token = normalize_optional_field(input.figma_token.as_deref())
-                .or_else(figma_token_from_env);
+                .or_else(figma_token_from_env)
+                .or_else(|| config.figma_token());
             let api_base_url = normalize_optional_field(input.figma_api_base_url.as_deref());
 
             let mut missing_values = Vec::new();
@@ -705,6 +740,41 @@ fn figma_token_from_env() -> Option<String> {
     std::env::var("FIGMA_TOKEN")
         .ok()
         .and_then(|value| normalize_optional_field(Some(value.as_str())))
+}
+
+fn anthropic_api_key_from_env() -> Option<String> {
+    std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .and_then(|value| normalize_optional_field(Some(value.as_str())))
+}
+
+fn load_specloom_config_or_exit(output: OutputMode) -> SpecloomConfig {
+    load_specloom_config()
+        .unwrap_or_else(|message| emit_usage_error_and_exit(message.as_str(), output))
+}
+
+fn load_specloom_config() -> Result<SpecloomConfig, String> {
+    let home_dir = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let Some(home_dir) = home_dir else {
+        return Ok(SpecloomConfig::default());
+    };
+    let config_path = home_dir.join(".config/specloom/config.toml");
+    if !config_path.is_file() {
+        return Ok(SpecloomConfig::default());
+    }
+
+    let text = std::fs::read_to_string(config_path.as_path()).map_err(|err| {
+        format!(
+            "failed to read Specloom config at {}: {err}. Fix permissions or remove the file and retry.",
+            config_path.display()
+        )
+    })?;
+    toml::from_str::<SpecloomConfig>(text.as_str()).map_err(|err| {
+        format!(
+            "invalid Specloom config at {}: {err}. Fix TOML syntax and retry.",
+            config_path.display()
+        )
+    })
 }
 
 fn input_mode_label(mode: InputMode) -> &'static str {

@@ -47,7 +47,9 @@ pub fn specloom_binary_path() -> std::path::PathBuf {
 }
 
 pub fn specloom_command() -> std::process::Command {
-    std::process::Command::new(specloom_binary_path())
+    let mut command = std::process::Command::new(specloom_binary_path());
+    command.env_remove("HOME");
+    command
 }
 
 pub fn cli_fixture_path(relative_path: &str) -> std::path::PathBuf {
@@ -107,6 +109,9 @@ pub fn start_live_api_server(
                 }
                 Err(err) => panic!("api server should accept request: {err}"),
             };
+            stream
+                .set_nonblocking(false)
+                .expect("api server stream should be blocking");
             stream
                 .set_read_timeout(Some(std::time::Duration::from_secs(2)))
                 .expect("api server should set read timeout");

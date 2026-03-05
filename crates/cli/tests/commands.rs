@@ -174,6 +174,46 @@ fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
 }
 
 #[test]
+fn fetch_subcommand_uses_figma_token_from_global_config_for_live_input() {
+    let workspace_root =
+        unique_cli_workspace_root("fetch_subcommand_uses_figma_token_from_global_config");
+    let home_root = unique_cli_workspace_root("specloom-config-home-for-fetch");
+    seed_global_specloom_config(
+        home_root.as_path(),
+        r#"[auth]
+figma_token = "token-from-config"
+"#,
+    );
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .env("HOME", home_root.as_path())
+        .env_remove("FIGMA_TOKEN")
+        .args([
+            "fetch",
+            "--input",
+            "live",
+            "--file-key",
+            "abc123",
+            "--node-id",
+            "123:456",
+            "--figma-api-base-url",
+            "http://127.0.0.1:9",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("fetch client error:"));
+    assert!(stderr.contains("For live fetch, verify"));
+    assert!(!stderr.contains("live input missing required value(s)"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&home_root);
+}
+
+#[test]
 fn fetch_subcommand_accepts_figma_quick_link_for_live_input() {
     let workspace_root =
         unique_cli_workspace_root("fetch_subcommand_accepts_figma_quick_link_for_live_input");
@@ -716,6 +756,69 @@ fn generate_ui_subcommand_rejects_anthropic_without_api_key() {
 }
 
 #[test]
+fn generate_ui_subcommand_uses_anthropic_api_key_from_global_config() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_ui_subcommand_uses_anthropic_api_key_from_config");
+    let home_root = unique_cli_workspace_root("specloom-config-home-for-anthropic");
+    seed_global_specloom_config(
+        home_root.as_path(),
+        r#"[auth]
+anthropic_api_key = "config-anthropic-key"
+"#,
+    );
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let prepare = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+        ])
+        .output()
+        .unwrap();
+    assert!(prepare.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .env("HOME", home_root.as_path())
+        .env_remove("ANTHROPIC_API_KEY")
+        .args([
+            "generate-ui",
+            "--bundle",
+            "output/agent/llm_bundle.json",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-3-5-sonnet-latest",
+            "--api-base-url",
+            "http://127.0.0.1:9",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("agent runner error:"));
+    assert!(stderr.contains("anthropic generation failed"));
+    assert!(!stderr.contains("anthropic provider missing required value(s)"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&home_root);
+}
+
+#[test]
 fn agent_tool_find_nodes_json_mode_returns_candidates() {
     let workspace_root = unique_cli_workspace_root("agent_tool_find_nodes_json_mode");
 
@@ -772,4 +875,12 @@ fn agent_tool_get_node_info_reports_not_found_actionably() {
     assert!(output.stderr.is_empty());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+fn seed_global_specloom_config(home_root: &std::path::Path, contents: &str) {
+    let config_path = home_root.join(".config/specloom/config.toml");
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent).expect("config parent should be creatable");
+    }
+    std::fs::write(config_path.as_path(), contents).expect("config should be writable");
 }

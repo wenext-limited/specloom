@@ -61,31 +61,34 @@ impl AgentRunner for AnthropicAgentRunner {
 
         let prompt = build_anthropic_prompt(&request.bundle, file_name, language_hint);
 
-        let client = if let Some(api_base_url) = self.config.api_base_url.as_ref() {
-            anthropic::Client::builder(self.config.api_key.as_str())
-                .base_url(api_base_url.as_str())
-                .build()
-                .map_err(|err| {
-                    PipelineError::AgentRunner(format!("anthropic client build failed: {err}"))
-                })?
-        } else {
-            anthropic::Client::new(self.config.api_key.as_str())
-        };
-        let agent = client
-            .agent(self.config.model.as_str())
-            .preamble(
-                "You generate UI files for Specloom. Return code only without markdown fences.",
-            )
-            .build();
-
         let runtime = tokio::runtime::Runtime::new().map_err(|err| {
             PipelineError::AgentRunner(format!("anthropic runtime initialization failed: {err}"))
         })?;
-        let response = runtime
-            .block_on(agent.prompt(prompt.as_str()).into_future())
-            .map_err(|err| {
-                PipelineError::AgentRunner(format!("anthropic generation failed: {err}"))
-            })?;
+        let response = runtime.block_on(async {
+            let client = if let Some(api_base_url) = self.config.api_base_url.as_ref() {
+                anthropic::Client::builder(self.config.api_key.as_str())
+                    .base_url(api_base_url.as_str())
+                    .build()
+                    .map_err(|err| {
+                        PipelineError::AgentRunner(format!("anthropic client build failed: {err}"))
+                    })?
+            } else {
+                anthropic::Client::new(self.config.api_key.as_str())
+            };
+            let agent = client
+                .agent(self.config.model.as_str())
+                .preamble(
+                    "You generate UI files for Specloom. Return code only without markdown fences.",
+                )
+                .build();
+            agent
+                .prompt(prompt.as_str())
+                .into_future()
+                .await
+                .map_err(|err| {
+                    PipelineError::AgentRunner(format!("anthropic generation failed: {err}"))
+                })
+        })?;
         let contents = strip_markdown_fences(response.as_str());
 
         if contents.trim().is_empty() {

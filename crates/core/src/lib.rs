@@ -183,6 +183,8 @@ const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
 const DEFAULT_INSTRUCTION_REMOTE_BASE_URL: &str =
     "https://raw.githubusercontent.com/WendellXY/specloom";
 const INSTRUCTION_REMOTE_BASE_URL_ENV: &str = "SPECLOOM_SKILLS_REMOTE_BASE_URL";
+const SPECLOOM_CONFIG_HOME_RELATIVE_PATH: &str = ".config/specloom";
+const INSTRUCTION_CACHE_DIR_NAME: &str = "skills_cache";
 
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
@@ -292,13 +294,14 @@ pub fn prepare_llm_bundle_in_workspace(
     workspace_root: &Path,
     request: &PrepareLlmBundleRequest,
 ) -> Result<String, PipelineError> {
-    prepare_llm_bundle_in_workspace_with_remote_base_url(workspace_root, request, None)
+    prepare_llm_bundle_in_workspace_with_instruction_overrides(workspace_root, request, None, None)
 }
 
-fn prepare_llm_bundle_in_workspace_with_remote_base_url(
+fn prepare_llm_bundle_in_workspace_with_instruction_overrides(
     workspace_root: &Path,
     request: &PrepareLlmBundleRequest,
     remote_base_url_override: Option<&str>,
+    config_root_override: Option<&Path>,
 ) -> Result<String, PipelineError> {
     let snapshot = read_required_json::<figma_client::RawFigmaSnapshot>(
         workspace_root,
@@ -309,8 +312,11 @@ fn prepare_llm_bundle_in_workspace_with_remote_base_url(
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH,
     )?;
 
-    let instructions =
-        build_bundle_instructions_with_remote_base_url(workspace_root, remote_base_url_override)?;
+    let instructions = build_bundle_instructions_with_remote_base_url(
+        workspace_root,
+        remote_base_url_override,
+        config_root_override,
+    )?;
     let bundle = LlmBundle {
         version: LLM_BUNDLE_VERSION.to_string(),
         request: BundleRequest {
@@ -1237,6 +1243,7 @@ fn build_optional_artifact_ref(
 fn build_bundle_instructions_with_remote_base_url(
     workspace_root: &Path,
     remote_base_url_override: Option<&str>,
+    config_root_override: Option<&Path>,
 ) -> Result<BundleInstructions, PipelineError> {
     let skills_guide_path = ".codex/SKILLS.md";
     let remote_base_url = resolve_instruction_remote_base_url(remote_base_url_override)
@@ -1247,18 +1254,21 @@ fn build_bundle_instructions_with_remote_base_url(
         skills_guide_path,
         remote_base_url.as_str(),
         release_refs.as_slice(),
+        config_root_override,
     )?;
     let agent_playbook_markdown = read_instruction_text(
         workspace_root,
         "docs/agent-playbook.md",
         remote_base_url.as_str(),
         release_refs.as_slice(),
+        config_root_override,
     )?;
     let figma_ui_coder_markdown = read_instruction_text(
         workspace_root,
         "docs/figma-ui-coder.md",
         remote_base_url.as_str(),
         release_refs.as_slice(),
+        config_root_override,
     )?;
 
     let mut skill_docs = Vec::new();
@@ -1268,6 +1278,7 @@ fn build_bundle_instructions_with_remote_base_url(
             path.as_str(),
             remote_base_url.as_str(),
             release_refs.as_slice(),
+            config_root_override,
         )?;
         skill_docs.push(BundleSkillDoc {
             name,
@@ -1351,19 +1362,71 @@ fn read_instruction_text(
     relative_path: &str,
     remote_base_url: &str,
     release_refs: &[String],
+    config_root_override: Option<&Path>,
 ) -> Result<String, PipelineError> {
     let local_path = workspace_root.join(relative_path);
     if local_path.is_file() {
         return std::fs::read_to_string(local_path.as_path()).map_err(io_error);
     }
-    read_remote_instruction_text(relative_path, remote_base_url, release_refs)
+
+    if let Some(cached) =
+        read_cached_instruction_text(relative_path, release_refs, config_root_override)?
+    {
+        return Ok(cached);
+    }
+
+    let (release_ref, text) =
+        read_remote_instruction_text(relative_path, remote_base_url, release_refs)?;
+    write_cached_instruction_text(
+        release_ref.as_str(),
+        relative_path,
+        text.as_str(),
+        config_root_override,
+    );
+    Ok(text)
+}
+
+fn read_cached_instruction_text(
+    relative_path: &str,
+    release_refs: &[String],
+    config_root_override: Option<&Path>,
+) -> Result<Option<String>, PipelineError> {
+    for release_ref in release_refs {
+        let Some(cache_path) =
+            instruction_cache_file_path(release_ref.as_str(), relative_path, config_root_override)?
+        else {
+            continue;
+        };
+        if cache_path.is_file() {
+            let text = std::fs::read_to_string(cache_path.as_path()).map_err(io_error)?;
+            return Ok(Some(text));
+        }
+    }
+    Ok(None)
+}
+
+fn write_cached_instruction_text(
+    release_ref: &str,
+    relative_path: &str,
+    text: &str,
+    config_root_override: Option<&Path>,
+) {
+    let Ok(Some(cache_path)) =
+        instruction_cache_file_path(release_ref, relative_path, config_root_override)
+    else {
+        return;
+    };
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(cache_path.as_path(), text.as_bytes());
 }
 
 fn read_remote_instruction_text(
     relative_path: &str,
     remote_base_url: &str,
     release_refs: &[String],
-) -> Result<String, PipelineError> {
+) -> Result<(String, String), PipelineError> {
     if release_refs.is_empty() {
         return Err(PipelineError::MissingInputArtifact(
             relative_path.to_string(),
@@ -1395,11 +1458,12 @@ fn read_remote_instruction_text(
             .send();
         match response {
             Ok(response) if response.status().is_success() => {
-                return response.text().map_err(|err| {
+                let text = response.text().map_err(|err| {
                     PipelineError::FetchClient(format!(
                         "instruction source decode error for {relative_path}: {err}"
                     ))
                 });
+                return text.map(|text| (release_ref.clone(), text));
             }
             Ok(response) => {
                 attempts.push(format!(
@@ -1423,6 +1487,68 @@ fn read_remote_instruction_text(
         release_refs.join(", "),
         attempts.join("; ")
     )))
+}
+
+fn instruction_cache_file_path(
+    release_ref: &str,
+    relative_path: &str,
+    config_root_override: Option<&Path>,
+) -> Result<Option<std::path::PathBuf>, PipelineError> {
+    let Some(config_root) = resolve_specloom_config_root(config_root_override) else {
+        return Ok(None);
+    };
+    let normalized_relative_path = normalize_instruction_relative_path(relative_path)?;
+    Ok(Some(
+        config_root
+            .join(INSTRUCTION_CACHE_DIR_NAME)
+            .join(release_ref)
+            .join(normalized_relative_path),
+    ))
+}
+
+fn resolve_specloom_config_root(config_root_override: Option<&Path>) -> Option<std::path::PathBuf> {
+    if let Some(override_path) = config_root_override {
+        return Some(override_path.to_path_buf());
+    }
+
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .map(|home| home.join(SPECLOOM_CONFIG_HOME_RELATIVE_PATH))
+}
+
+fn normalize_instruction_relative_path(
+    relative_path: &str,
+) -> Result<std::path::PathBuf, PipelineError> {
+    use std::path::Component;
+
+    let trimmed = relative_path.trim();
+    if trimmed.is_empty() {
+        return Err(PipelineError::FetchClient(
+            "instruction path is empty and cannot be cached".to_string(),
+        ));
+    }
+
+    let candidate = std::path::Path::new(trimmed.trim_start_matches('/'));
+    let mut normalized = std::path::PathBuf::new();
+    for component in candidate.components() {
+        match component {
+            Component::Normal(segment) => normalized.push(segment),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(PipelineError::FetchClient(format!(
+                    "instruction path `{relative_path}` is not cache-safe"
+                )));
+            }
+        }
+    }
+
+    if normalized.as_os_str().is_empty() {
+        return Err(PipelineError::FetchClient(format!(
+            "instruction path `{relative_path}` is not cache-safe"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 fn read_required_json<T>(workspace_root: &Path, relative_path: &str) -> Result<T, PipelineError>

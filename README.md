@@ -60,6 +60,22 @@ specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic 
 1. local project files (`.codex/SKILLS.md`, `docs/agent-playbook.md`, `docs/figma-ui-coder.md`, and referenced skill docs)
 2. matching GitHub release tag based on CLI version (`v<version>`, then `<version>`)
 
+Global config (optional):
+
+1. File: `~/.config/specloom/config.toml`
+2. Credential precedence: CLI flag > env var > config file
+3. Remote skill/doc cache: `~/.config/specloom/skills_cache/<release_ref>/...`
+
+Example:
+
+```toml
+[auth]
+figma_token = "..."
+anthropic_api_key = "..."
+```
+
+Security note: this file is plain text. Never commit or upload it.
+
 Expected outputs for this flow:
 
 1. `output/agent/llm_bundle.json`

@@ -56,6 +56,17 @@ Set your token once (or pass `--figma-token` per command):
 export FIGMA_TOKEN="<YOUR_FIGMA_PERSONAL_ACCESS_TOKEN>"
 ```
 
+Optional global config (plain text):
+
+```toml
+# ~/.config/specloom/config.toml
+[auth]
+figma_token = "..."
+anthropic_api_key = "..."
+```
+
+Credential precedence: CLI flag > env var > config file.
+
 Fetch and inspect a real node snapshot:
 
 ```bash
@@ -178,7 +189,9 @@ Notes:
 5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
 6. `--provider anthropic` requires `ANTHROPIC_API_KEY` (or `--api-key`).
 7. `prepare-llm-bundle` loads instruction docs from local project files first; if missing, it fetches from GitHub release refs matching CLI version (`v<version>`, then `<version>`).
-8. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+8. Remote instruction docs/skills are cached at `~/.config/specloom/skills_cache/<release_ref>/...`.
+9. `~/.config/specloom/config.toml` is plain text. Keep it private and never commit/upload it.
+10. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## License
 
