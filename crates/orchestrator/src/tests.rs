@@ -290,6 +290,44 @@
     }
 
     #[test]
+    fn build_agent_context_rejects_invalid_repeat_element_ids_in_spec() {
+        let workspace_root = unique_test_workspace_root(
+            "build_agent_context_rejects_invalid_repeat_element_ids_in_spec",
+        );
+
+        let spec = ui_spec::UiSpec::Container {
+            id: "0:1".to_string(),
+            name: "Root".to_string(),
+            text: String::new(),
+            children: vec![ui_spec::UiSpec::Text {
+                id: "0:2".to_string(),
+                name: "Row".to_string(),
+                children: Vec::new(),
+            }],
+            repeat_element_ids: vec!["missing-child".to_string()],
+        };
+
+        let spec_path = workspace_root.join(SPEC_ARTIFACT_RELATIVE_PATH);
+        if let Some(parent) = spec_path.parent() {
+            std::fs::create_dir_all(parent).expect("spec parent should be creatable");
+        }
+        let spec_ron = spec.to_pretty_ron().expect("spec should serialize");
+        std::fs::write(spec_path.as_path(), spec_ron).expect("spec should be writable");
+
+        let err = run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+            .expect_err("invalid repeat ids should fail build-agent-context");
+        match err {
+            PipelineError::UiSpecBuild(message) => {
+                assert!(message.contains("invalid repeat element ids:"));
+                assert!(message.contains("repeat element id is not a direct child"));
+            }
+            other => panic!("unexpected error type: {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&workspace_root);
+    }
+
+    #[test]
     fn build_agent_context_reuses_cached_root_screenshot_when_present() {
         let workspace_root = unique_test_workspace_root(
             "build_agent_context_reuses_cached_root_screenshot_when_present",

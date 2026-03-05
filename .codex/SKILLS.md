@@ -46,3 +46,4 @@ Use when executing or maintaining phase boards with `[ ]`, `[~]`, `[x]` status a
 2. Keep warnings explicit for low-confidence or unsupported cases.
 3. Never shortcut `ui_spec.ron` by copying `pre_layout.ron`; always apply `transform_plan.json` through `build-spec`.
 4. Every planned task must include a verification command.
+5. Infer `repeat_element_ids` during `generating-ui-spec-ron` when repeated-element structure is clear; otherwise leave it absent/empty.

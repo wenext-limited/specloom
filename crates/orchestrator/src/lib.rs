@@ -597,6 +597,9 @@ fn run_build_agent_context_stage(
     config: &PipelineRunConfig,
 ) -> Result<String, PipelineError> {
     let spec = read_required_ron::<ui_spec::UiSpec>(workspace_root, SPEC_ARTIFACT_RELATIVE_PATH)?;
+    let spec = spec
+        .materialize_repeats()
+        .map_err(|err| PipelineError::UiSpecBuild(format!("invalid repeat element ids: {err}")))?;
 
     let root_node_id = spec.id().to_string();
     let root_screenshot_ref = format!("output/images/root_{}.png", root_node_id.replace(':', "_"));

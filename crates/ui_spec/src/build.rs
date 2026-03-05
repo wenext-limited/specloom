@@ -12,6 +12,8 @@ pub enum UiSpecBuildError {
     MissingNormalizedNode(String),
     #[error("invalid transform plan: {0}")]
     InvalidTransformPlan(String),
+    #[error("invalid repeat element ids: {0}")]
+    InvalidRepeatElementIds(String),
     #[error("replacement child missing after validation for node {node_id}: {child_id}")]
     ReplacementChildMissingAfterValidation { node_id: String, child_id: String },
 }
@@ -38,8 +40,12 @@ pub fn apply_transform_plan(
     pre_layout: &UiSpec,
     transform_plan: &TransformPlan,
 ) -> Result<UiSpec, UiSpecBuildError> {
+    let expanded_pre_layout = pre_layout
+        .materialize_repeats()
+        .map_err(|err| UiSpecBuildError::InvalidRepeatElementIds(err.to_string()))?;
+
     transform_plan
-        .validate_against_pre_layout(pre_layout)
+        .validate_against_pre_layout(&expanded_pre_layout)
         .map_err(|err| UiSpecBuildError::InvalidTransformPlan(err.to_string()))?;
 
     let decisions_by_node = transform_plan
@@ -48,7 +54,7 @@ pub fn apply_transform_plan(
         .map(|decision| (decision.node_id.as_str(), decision))
         .collect::<BTreeMap<_, _>>();
 
-    apply_transform_node(pre_layout, &decisions_by_node)
+    apply_transform_node(&expanded_pre_layout, &decisions_by_node)
 }
 
 fn build_ui_spec_node(
@@ -81,6 +87,7 @@ fn build_ui_spec_node(
             name: node.name.clone(),
             text,
             children: Vec::new(),
+            repeat_element_ids: Vec::new(),
         });
     }
 
@@ -145,6 +152,7 @@ fn build_ui_spec_node(
             name: node.name.clone(),
             text: String::new(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::Instance => UiSpec::Instance {
             id: node.id.clone(),
@@ -176,6 +184,7 @@ fn build_ui_spec_node(
             name: node.name.clone(),
             text: String::new(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         NodeType::ScrollView => UiSpec::ScrollView {
             id: node.id.clone(),
@@ -252,6 +261,7 @@ fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {
             name: name.clone(),
             text: text.clone(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         UiSpec::Instance { id, name, .. } => UiSpec::Instance {
             id: id.clone(),
@@ -283,6 +293,7 @@ fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {
             name: name.clone(),
             text: String::new(),
             children,
+            repeat_element_ids: Vec::new(),
         },
         UiSpec::ScrollView { id, name, .. } => UiSpec::ScrollView {
             id: id.clone(),
@@ -320,6 +331,7 @@ fn ui_spec_from_suggested_type(
             name,
             text,
             children,
+            repeat_element_ids: Vec::new(),
         },
         SuggestedNodeType::Instance => UiSpec::Instance { id, name, children },
         SuggestedNodeType::Text => UiSpec::Text { id, name, children },
@@ -331,6 +343,7 @@ fn ui_spec_from_suggested_type(
             name,
             text,
             children,
+            repeat_element_ids: Vec::new(),
         },
         SuggestedNodeType::ScrollView => UiSpec::ScrollView { id, name, children },
         SuggestedNodeType::HStack => UiSpec::HStack { id, name, children },

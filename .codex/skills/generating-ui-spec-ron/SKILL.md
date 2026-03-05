@@ -30,6 +30,18 @@ Do not use this skill when you are only inspecting an existing spec without chan
 
 Policy: when screenshot and node data conflict, prefer node data and emit a warning.
 
+## repeat_element_ids Policy (Required)
+
+`ui_spec.ron` container-like nodes may include an optional `repeat_element_ids` field.
+
+Current project policy:
+
+1. The agent should infer `repeat_element_ids` during transform planning when repeated-element structure is clear.
+2. Only use direct child IDs of the node; keep IDs unique and in stable child order.
+3. Infer `repeat_element_ids` only for container-like nodes (`Container`, `Button`).
+4. If confidence is low or evidence is weak, leave `repeat_element_ids` absent/empty and record uncertainty in reasoning/warnings.
+5. Keep using `transform_plan.json` (`suggested_type` + `child_policy`) as the primary semantic contract; `repeat_element_ids` is complementary metadata.
+
 ## Large node_map Handling (Required)
 
 When `node_map.json` is too large to read safely in-context, use `forge agent-tool` instead of loading the full file.
@@ -70,6 +82,7 @@ Rules:
 - `keep` and `drop` have no `children`
 - `replace_with` has non-empty `children`
 - each replacement child exists and is a direct child of the decision node
+- inferred `repeat_element_ids` (if present) are unique direct child IDs in stable order
 - no unknown fields (plan structs use `deny_unknown_fields`)
 8. Apply mechanically with exactly one of:
 - `cargo run -p forge -- run-stage build-spec`
