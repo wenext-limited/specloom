@@ -5,7 +5,12 @@ use std::path::Path;
 mod agent_context;
 mod asset_pipeline;
 pub mod figma_client;
+mod llm_bundle;
 mod ui_spec;
+pub use llm_bundle::{
+    BundleArtifactRef, BundleArtifacts, BundleFigmaContext, BundleInstructions, BundleRequest,
+    BundleSkillDoc, BundleToolContract, BundleToolDefinition, LLM_BUNDLE_VERSION, LlmBundle,
+};
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum PipelineError {
