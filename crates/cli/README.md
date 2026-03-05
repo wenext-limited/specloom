@@ -27,6 +27,27 @@ cargo run -p specloom-cli -- generate --input fixture
 
 The `generate` command runs the full pipeline in order and writes artifacts under `output/`.
 
+## End-to-End UI Generation
+
+```bash
+# 1) Run deterministic pipeline (fixture or live)
+specloom generate --input fixture
+specloom generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+
+# 2) Build output/agent/llm_bundle.json from deterministic artifacts + docs
+specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>" --target react-tailwind --intent "Generate login screen code"
+
+# 3) Generate target UI from the bundle
+specloom generate-ui --bundle output/agent/llm_bundle.json
+```
+
+Expected outputs:
+
+1. `output/agent/llm_bundle.json`
+2. generated target code under `output/generated/<target>/...`
+3. `output/reports/generation_warnings.json`
+4. `output/reports/generation_trace.json`
+
 ## Live Figma Quickstart
 
 Set your token once (or pass `--figma-token` per command):
@@ -99,6 +120,20 @@ specloom generate --input live --figma-url "https://www.figma.com/design/<FILE_K
 specloom generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
+Build an LLM bundle:
+
+```bash
+specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>" --target react-tailwind --intent "Generate login screen code"
+specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>" --target swiftui --intent "Generate SwiftUI screen" --output json
+```
+
+Generate target UI from a bundle:
+
+```bash
+specloom generate-ui --bundle output/agent/llm_bundle.json
+specloom generate-ui --bundle output/agent/llm_bundle.json --output json
+```
+
 Run agent lookup tools (stateless run-and-consume):
 
 ```bash
@@ -124,6 +159,10 @@ specloom agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID
 | Run end-to-end pipeline with Figma quick link input | `specloom generate --input live --figma-url "<figma-url>"` | text (default) |
 | Run end-to-end pipeline from existing snapshot artifact | `specloom generate --input snapshot --snapshot-path <path>` | text (default) |
 | Run end-to-end pipeline with fixture input and structured stage results | `specloom generate --input fixture --output json` | json |
+| Build `output/agent/llm_bundle.json` from deterministic artifacts | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>"` | text (default) |
+| Build `output/agent/llm_bundle.json` as machine-readable output | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>" --output json` | json |
+| Generate target UI code from bundle path | `specloom generate-ui --bundle output/agent/llm_bundle.json` | text (default) |
+| Generate target UI code from bundle path as machine-readable output | `specloom generate-ui --bundle output/agent/llm_bundle.json --output json` | json |
 | Find candidate nodes via deterministic fuzzy lookup | `specloom agent-tool find-nodes --query "<text>" --output json` | text/json |
 | Read indexed node details | `specloom agent-tool get-node-info --node-id <id>` | text/json |
 | Fetch node screenshot directly from Figma images API | `specloom agent-tool get-node-screenshot --file-key <file> --node-id <node>` | text/json |
@@ -133,7 +172,9 @@ Notes:
 1. Valid stages are: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 2. Invalid stage execution returns exit code `2` with an explicit error message.
 3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
-4. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+4. `prepare-llm-bundle` writes `output/agent/llm_bundle.json`.
+5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
+6. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## License
 

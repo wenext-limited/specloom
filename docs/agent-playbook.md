@@ -8,6 +8,19 @@ This playbook defines how generation agents should use repository tooling in v1.
 2. Do not require a persistent daemon/session server.
 3. Read/write deterministic artifacts under `output/`.
 
+## Operator Run Order (End-to-End)
+
+1. Run deterministic pipeline (`specloom generate --input fixture` or live `specloom generate --input live --figma-url "<FIGMA_URL>"`).
+2. Build bundle: `specloom prepare-llm-bundle --figma-url "<FIGMA_URL>" --target <TARGET> --intent "<INTENT>"`.
+3. Generate UI: `specloom generate-ui --bundle output/agent/llm_bundle.json`.
+
+Expected outputs:
+
+1. `output/agent/llm_bundle.json`
+2. generated target code under `output/generated/<target>/...`
+3. `output/reports/generation_warnings.json`
+4. `output/reports/generation_trace.json`
+
 ## Build-Spec Artifact Order
 
 `build-spec` is a two-step flow (preprocess -> agent transform):
@@ -66,8 +79,8 @@ Record tool execution trace in `output/reports/generation_trace.json`:
 
 For every generation run:
 
-1. produce target UI output files
-2. produce warning artifact
-3. produce trace artifact
+1. produce target UI output files under `output/generated/<target>/...`
+2. produce warning artifact at `output/reports/generation_warnings.json`
+3. produce trace artifact at `output/reports/generation_trace.json`
 
 Do not claim successful completion without all three output classes.

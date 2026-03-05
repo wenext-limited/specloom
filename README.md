@@ -8,6 +8,7 @@ This repository implements a deterministic, stage-based pipeline that produces:
 2. spec artifacts (`pre_layout.ron`, `node_map.json`, `transform_plan.json`, `ui_spec.ron`)
 3. agent context/search artifacts for lookup tooling
 4. asset manifest metadata
+5. LLM bundle + generated target UI outputs with warning/trace reports
 
 ## Workspace Crates
 
@@ -36,6 +37,27 @@ Within `build-spec`, artifacts are produced in this order:
 For live `generate` runs, `build-agent-context` also downloads the root-node screenshot to:
 
 1. `output/images/root_<node_id_with_colon_replaced_by_underscore>.png`
+
+## End-to-End Agent Workflow
+
+```bash
+# 1) Run deterministic pipeline (fixture or live)
+specloom generate --input fixture
+specloom generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+
+# 2) Build agent bundle for generation
+specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>" --target react-tailwind --intent "Generate login screen code"
+
+# 3) Generate target UI from the prepared bundle
+specloom generate-ui --bundle output/agent/llm_bundle.json
+```
+
+Expected outputs for this flow:
+
+1. `output/agent/llm_bundle.json`
+2. generated target code under `output/generated/<target>/...`
+3. `output/reports/generation_warnings.json`
+4. `output/reports/generation_trace.json`
 
 ## Scope
 
