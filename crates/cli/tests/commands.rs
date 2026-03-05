@@ -354,6 +354,9 @@ fn generate_subcommand_runs_full_pipeline() {
     let text = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
+    assert!(text.contains("pipeline=generate"));
+    assert!(text.contains("[1/5] RUN  stage=fetch"));
+    assert!(text.contains("[5/5] DONE stage=export-assets"));
     assert!(text.contains("stage=fetch output=output/raw"));
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=build-spec output=output/specs"));
@@ -436,6 +439,9 @@ fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
     let text = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
+    assert!(text.contains("pipeline=generate"));
+    assert!(text.contains("[1/5] RUN  stage=fetch"));
+    assert!(text.contains("[5/5] DONE stage=export-assets"));
     assert!(text.contains("stage=fetch output=output/raw"));
     assert!(text.contains("stage=normalize output=output/normalized"));
     assert!(text.contains("stage=build-spec output=output/specs"));
@@ -455,7 +461,9 @@ fn generate_subcommand_live_downloads_root_screenshot() {
         match start_single_binary_response_server("/root.png", expected_png_bytes.as_slice()) {
             Ok(server) => server,
             Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
-                eprintln!("skipping live screenshot download test: local socket bind not permitted");
+                eprintln!(
+                    "skipping live screenshot download test: local socket bind not permitted"
+                );
                 return;
             }
             Err(err) => panic!("image server should bind: {err}"),
@@ -491,7 +499,9 @@ fn generate_subcommand_live_downloads_root_screenshot() {
         .unwrap();
 
     api_server_thread.join().expect("api server should finish");
-    image_server_thread.join().expect("image server should finish");
+    image_server_thread
+        .join()
+        .expect("image server should finish");
 
     assert!(
         output.status.success(),
@@ -499,7 +509,10 @@ fn generate_subcommand_live_downloads_root_screenshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let screenshot_path = workspace_root.join("output/images/root_123_456.png");
-    assert!(screenshot_path.is_file(), "expected screenshot: {screenshot_path:?}");
+    assert!(
+        screenshot_path.is_file(),
+        "expected screenshot: {screenshot_path:?}"
+    );
     let screenshot_bytes = std::fs::read(screenshot_path).expect("screenshot should be readable");
     assert_eq!(screenshot_bytes, expected_png_bytes);
 

@@ -245,24 +245,51 @@ fn main() {
             },
             Command::Generate { output, input } => {
                 let config = fetch_config_for_generate_or_exit(&input, output);
-                match orchestrator::run_all_with_config(&config) {
-                    Ok(results) => match output {
-                        OutputMode::Text => {
-                            for result in results {
-                                if let Some(artifact_path) = result.artifact_path {
+                match output {
+                    OutputMode::Text => {
+                        let stage_names = orchestrator::pipeline_stage_names();
+                        let total_stages = stage_names.len();
+                        println!(
+                            "pipeline=generate mode={} stages={total_stages}",
+                            input_mode_label(input.input)
+                        );
+                        let mut results = Vec::with_capacity(total_stages);
+
+                        for (index, stage_name) in stage_names.into_iter().enumerate() {
+                            let position = index + 1;
+                            println!("[{position}/{total_stages}] RUN  stage={stage_name}");
+                            match orchestrator::run_stage_with_config(stage_name, &config) {
+                                Ok(result) => {
                                     println!(
-                                        "stage={} output={} artifact={}",
-                                        result.stage_name, result.output_dir, artifact_path
-                                    );
-                                } else {
-                                    println!(
-                                        "stage={} output={}",
+                                        "[{position}/{total_stages}] DONE stage={} output={}",
                                         result.stage_name, result.output_dir
                                     );
+                                    results.push(result);
+                                }
+                                Err(err) => {
+                                    println!("[{position}/{total_stages}] FAIL stage={stage_name}");
+                                    emit_error_and_exit(err, output);
                                 }
                             }
                         }
-                        OutputMode::Json => {
+
+                        println!("summary=ok completed={total_stages}/{total_stages} failed=0");
+                        for result in results {
+                            if let Some(artifact_path) = result.artifact_path {
+                                println!(
+                                    "stage={} output={} artifact={}",
+                                    result.stage_name, result.output_dir, artifact_path
+                                );
+                            } else {
+                                println!(
+                                    "stage={} output={}",
+                                    result.stage_name, result.output_dir
+                                );
+                            }
+                        }
+                    }
+                    OutputMode::Json => match orchestrator::run_all_with_config(&config) {
+                        Ok(results) => {
                             let results = results
                                 .into_iter()
                                 .map(|result| {
@@ -282,8 +309,8 @@ fn main() {
                                 .join(",");
                             println!("{{\"results\":[{results}]}}");
                         }
+                        Err(err) => emit_error_and_exit(err, output),
                     },
-                    Err(err) => emit_error_and_exit(err, output),
                 }
             }
             Command::AgentTool { tool } => match tool {
@@ -309,8 +336,9 @@ fn main() {
                             }
                         }
                         OutputMode::Json => {
-                            let encoded = serde_json::to_string(&result)
-                                .unwrap_or_else(|err| panic!("find-nodes json encode failed: {err}"));
+                            let encoded = serde_json::to_string(&result).unwrap_or_else(|err| {
+                                panic!("find-nodes json encode failed: {err}")
+                            });
                             println!("{encoded}");
                         }
                     },
@@ -338,9 +366,10 @@ fn main() {
                                 }
                             }
                             OutputMode::Json => {
-                                let encoded = serde_json::to_string(&result).unwrap_or_else(|err| {
-                                    panic!("get-node-info json encode failed: {err}")
-                                });
+                                let encoded =
+                                    serde_json::to_string(&result).unwrap_or_else(|err| {
+                                        panic!("get-node-info json encode failed: {err}")
+                                    });
                                 println!("{encoded}");
                             }
                         },
@@ -379,9 +408,10 @@ fn main() {
                                 );
                             }
                             OutputMode::Json => {
-                                let encoded = serde_json::to_string(&result).unwrap_or_else(|err| {
-                                    panic!("get-node-screenshot json encode failed: {err}")
-                                });
+                                let encoded =
+                                    serde_json::to_string(&result).unwrap_or_else(|err| {
+                                        panic!("get-node-screenshot json encode failed: {err}")
+                                    });
                                 println!("{encoded}");
                             }
                         },
@@ -566,6 +596,14 @@ fn figma_token_from_env() -> Option<String> {
     std::env::var("FIGMA_TOKEN")
         .ok()
         .and_then(|value| normalize_optional_field(Some(value.as_str())))
+}
+
+fn input_mode_label(mode: InputMode) -> &'static str {
+    match mode {
+        InputMode::Fixture => "fixture",
+        InputMode::Live => "live",
+        InputMode::Snapshot => "snapshot",
+    }
 }
 
 fn normalize_optional_field(value: Option<&str>) -> Option<String> {

@@ -83,10 +83,24 @@ fn generate_success_with_explicit_fixture_input_smoke() {
         .unwrap();
 
     assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        "stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json\nstage=normalize output=output/normalized artifact=output/normalized/normalized_document.json\nstage=build-spec output=output/specs artifact=output/specs/ui_spec.ron\nstage=build-agent-context output=output/agent artifact=output/agent/agent_context.json\nstage=export-assets output=output/assets artifact=output/assets/asset_manifest.json\n"
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("pipeline=generate"));
+    assert!(stdout.contains("stages=5"));
+    assert!(stdout.contains("[1/5] RUN  stage=fetch"));
+    assert!(stdout.contains("[5/5] DONE stage=export-assets"));
+    assert!(
+        stdout.contains("stage=fetch output=output/raw artifact=output/raw/fetch_snapshot.json")
     );
+    assert!(stdout.contains("stage=normalize output=output/normalized artifact=output/normalized/normalized_document.json"));
+    assert!(
+        stdout.contains("stage=build-spec output=output/specs artifact=output/specs/ui_spec.ron")
+    );
+    assert!(stdout.contains(
+        "stage=build-agent-context output=output/agent artifact=output/agent/agent_context.json"
+    ));
+    assert!(stdout.contains(
+        "stage=export-assets output=output/assets artifact=output/assets/asset_manifest.json"
+    ));
     assert!(out.stderr.is_empty());
 
     let _ = std::fs::remove_dir_all(&workspace_root);
