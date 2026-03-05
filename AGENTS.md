@@ -11,7 +11,7 @@ This is a Rust 2024 workspace for a Figma node tree to UI spec + LLM UI generati
 Current crate layout:
 
 - `crates/cli`
-- `crates/orchestrator` (core runtime and contracts)
+- `crates/core` (core runtime and contracts)
 
 Key docs:
 

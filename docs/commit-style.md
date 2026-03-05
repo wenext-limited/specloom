@@ -34,7 +34,7 @@ Examples:
 - `swiftui-codegen`
 - `assets`
 - `review-report`
-- `orchestrator`
+- `core`
 - `workspace`
 - `docs`
 - `ci`
@@ -77,7 +77,7 @@ When useful, include:
 Example:
 
 ```text
-feat(orchestrator): add pipeline stage ordering contract
+feat(core): add pipeline stage ordering contract
 
 Define a canonical stage list used by CLI and orchestration checks.
 This makes stage ordering explicit and testable.

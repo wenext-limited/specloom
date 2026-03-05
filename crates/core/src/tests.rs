@@ -522,7 +522,7 @@ fn unique_test_workspace_root(test_name: &str) -> std::path::PathBuf {
         .expect("system clock should be after unix epoch")
         .as_nanos();
     let path = std::env::temp_dir().join(format!(
-        "forge-orchestrator-{test_name}-{}-{timestamp_nanos}",
+        "forge-core-{test_name}-{}-{timestamp_nanos}",
         std::process::id()
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace root should be created");

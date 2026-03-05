@@ -17,6 +17,6 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-core = { package = "forge-figma-core", path = "../orchestrator", version = "=0.2.0" }
+core = { package = "forge-figma-core", path = "../core", version = "=0.2.0" }
 serde_json = "1.0"
 url = "2.5"

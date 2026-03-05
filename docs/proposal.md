@@ -178,7 +178,7 @@ Current known gap:
 ## 9. Crate Responsibilities (Current Workspace)
 
 1. `crates/cli` (`forge-figma-pipeline` package, `forge` binary): CLI command surface and output formatting.
-2. `crates/orchestrator` (`forge-figma-core` package): core contracts and stage execution runtime including fetch/screenshot client APIs, normalization, ui-spec transform logic, agent-context lookup, and asset manifest generation.
+2. `crates/core` (`forge-figma-core` package): core contracts and stage execution runtime including fetch/screenshot client APIs, normalization, ui-spec transform logic, agent-context lookup, and asset manifest generation.
 
 ## 10. Determinism and Safety Guarantees
 
