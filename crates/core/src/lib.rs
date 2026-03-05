@@ -5,6 +5,7 @@ use std::path::Path;
 mod agent_context;
 mod asset_pipeline;
 pub mod figma_client;
+mod hash;
 mod llm_bundle;
 mod ui_spec;
 pub use llm_bundle::{
@@ -165,6 +166,7 @@ const NODE_MAP_ARTIFACT_RELATIVE_PATH: &str = "output/specs/node_map.json";
 const TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH: &str = "output/specs/transform_plan.json";
 const AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH: &str = "output/agent/agent_context.json";
 const SEARCH_INDEX_ARTIFACT_RELATIVE_PATH: &str = "output/agent/search_index.json";
+const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/agent/llm_bundle.json";
 const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
 const GENERATION_TRACE_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_trace.json";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
@@ -190,6 +192,7 @@ fn producer_stage_for_artifact(artifact_path: &str) -> Option<&'static str> {
         TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH => Some("build-spec"),
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
         SEARCH_INDEX_ARTIFACT_RELATIVE_PATH => Some("build-agent-context"),
+        LLM_BUNDLE_ARTIFACT_RELATIVE_PATH => Some("prepare-llm-bundle"),
         ASSET_MANIFEST_RELATIVE_PATH => Some("export-assets"),
         _ => None,
     }
@@ -258,6 +261,85 @@ pub fn run_all_with_config(
 ) -> Result<Vec<StageExecutionResult>, PipelineError> {
     let workspace_root = std::env::current_dir().map_err(io_error)?;
     run_all_in_workspace_with_config(workspace_root.as_path(), config)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrepareLlmBundleRequest {
+    pub figma_url: String,
+    pub target: String,
+    pub intent: String,
+}
+
+pub fn prepare_llm_bundle(request: &PrepareLlmBundleRequest) -> Result<String, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    prepare_llm_bundle_in_workspace(workspace_root.as_path(), request)
+}
+
+pub fn prepare_llm_bundle_in_workspace(
+    workspace_root: &Path,
+    request: &PrepareLlmBundleRequest,
+) -> Result<String, PipelineError> {
+    let snapshot = read_required_json::<figma_client::RawFigmaSnapshot>(
+        workspace_root,
+        FETCH_ARTIFACT_RELATIVE_PATH,
+    )?;
+    let context = read_required_json::<agent_context::AgentContext>(
+        workspace_root,
+        AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH,
+    )?;
+
+    let instructions = build_bundle_instructions(workspace_root)?;
+    let bundle = LlmBundle {
+        version: LLM_BUNDLE_VERSION.to_string(),
+        request: BundleRequest {
+            target: request.target.clone(),
+            intent: request.intent.clone(),
+        },
+        figma: BundleFigmaContext {
+            source_url: request.figma_url.clone(),
+            file_key: snapshot.source.file_key,
+            root_node_id: context.screen.root_node_id.clone(),
+        },
+        artifacts: BundleArtifacts {
+            ui_spec: build_artifact_ref(workspace_root, SPEC_ARTIFACT_RELATIVE_PATH)?,
+            agent_context: build_artifact_ref(workspace_root, AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH)?,
+            search_index: build_artifact_ref(workspace_root, SEARCH_INDEX_ARTIFACT_RELATIVE_PATH)?,
+            asset_manifest: build_artifact_ref(workspace_root, ASSET_MANIFEST_RELATIVE_PATH)?,
+            root_screenshot: build_optional_artifact_ref(
+                workspace_root,
+                context.screen.root_screenshot_ref.as_str(),
+            )?,
+        },
+        instructions,
+        tool_contract: BundleToolContract {
+            tools: vec![
+                BundleToolDefinition {
+                    name: "find_nodes".to_string(),
+                    usage: "specloom agent-tool find-nodes --query \"<text>\" --output json"
+                        .to_string(),
+                },
+                BundleToolDefinition {
+                    name: "get_node_info".to_string(),
+                    usage: "specloom agent-tool get-node-info --node-id <NODE_ID> --output json"
+                        .to_string(),
+                },
+                BundleToolDefinition {
+                    name: "get_node_screenshot".to_string(),
+                    usage: "specloom agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID> --output json".to_string(),
+                },
+                BundleToolDefinition {
+                    name: "get_asset".to_string(),
+                    usage: "specloom agent-tool get-asset --node-id <NODE_ID> --output json"
+                        .to_string(),
+                },
+            ],
+        },
+    };
+
+    let bundle_path = workspace_root.join(LLM_BUNDLE_ARTIFACT_RELATIVE_PATH);
+    let bundle_bytes = serde_json::to_vec_pretty(&bundle).map_err(serialization_error)?;
+    write_bytes(bundle_path.as_path(), bundle_bytes.as_slice())?;
+    Ok(normalize_result_path(workspace_root, bundle_path.as_path()))
 }
 
 pub fn find_nodes(query: &str, top_k: usize) -> Result<FindNodesResult, PipelineError> {
@@ -945,6 +1027,126 @@ fn run_export_assets_stage(workspace_root: &Path) -> Result<String, PipelineErro
     write_bytes(output_path.as_path(), encoded.as_slice())?;
 
     Ok(normalize_result_path(workspace_root, output_path.as_path()))
+}
+
+fn build_artifact_ref(
+    workspace_root: &Path,
+    relative_path: &str,
+) -> Result<BundleArtifactRef, PipelineError> {
+    let path = workspace_root.join(relative_path);
+    if !path.exists() {
+        return Err(PipelineError::MissingInputArtifact(relative_path.to_string()));
+    }
+
+    let bytes = std::fs::read(path.as_path()).map_err(io_error)?;
+    Ok(BundleArtifactRef {
+        path: relative_path.to_string(),
+        sha256: hash::sha256_hex(bytes.as_slice()),
+    })
+}
+
+fn build_optional_artifact_ref(
+    workspace_root: &Path,
+    relative_path: &str,
+) -> Result<Option<BundleArtifactRef>, PipelineError> {
+    if relative_path.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let path = workspace_root.join(relative_path);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let bytes = std::fs::read(path.as_path()).map_err(io_error)?;
+    Ok(Some(BundleArtifactRef {
+        path: relative_path.to_string(),
+        sha256: hash::sha256_hex(bytes.as_slice()),
+    }))
+}
+
+fn build_bundle_instructions(workspace_root: &Path) -> Result<BundleInstructions, PipelineError> {
+    let skills_guide_path = ".codex/SKILLS.md";
+    let skills_guide_markdown = read_required_text_file(workspace_root, skills_guide_path)?;
+    let agent_playbook_markdown =
+        read_required_text_file(workspace_root, "docs/agent-playbook.md")?;
+    let figma_ui_coder_markdown = read_required_text_file(workspace_root, "docs/figma-ui-coder.md")?;
+
+    let mut skill_docs = Vec::new();
+    for (name, path) in parse_active_skill_refs(skills_guide_markdown.as_str()) {
+        let markdown = read_required_text_file(workspace_root, path.as_str())?;
+        skill_docs.push(BundleSkillDoc {
+            name,
+            path,
+            markdown,
+        });
+    }
+
+    Ok(BundleInstructions {
+        skills_guide_markdown,
+        agent_playbook_markdown,
+        figma_ui_coder_markdown,
+        skill_docs,
+    })
+}
+
+fn parse_active_skill_refs(skills_guide_markdown: &str) -> Vec<(String, String)> {
+    let mut in_active_skills = false;
+    let mut current_name: Option<String> = None;
+    let mut refs = Vec::new();
+    let mut seen_paths = std::collections::BTreeSet::new();
+
+    for raw_line in skills_guide_markdown.lines() {
+        let line = raw_line.trim();
+        if line == "## Active Skills" {
+            in_active_skills = true;
+            continue;
+        }
+        if in_active_skills && line.starts_with("## ") {
+            break;
+        }
+        if !in_active_skills {
+            continue;
+        }
+
+        if let Some(path) = line.strip_prefix("Path:")
+            && let Some(name) = current_name.take()
+        {
+            let normalized_path = path.trim().trim_matches('`').to_string();
+            if seen_paths.insert(normalized_path.clone()) {
+                refs.push((name, normalized_path));
+            }
+            continue;
+        }
+
+        if let Some(name) = extract_backticked_name(line) {
+            current_name = Some(name);
+        }
+    }
+
+    refs
+}
+
+fn extract_backticked_name(line: &str) -> Option<String> {
+    let start = line.find('`')?;
+    let tail = &line[start + 1..];
+    let end = tail.find('`')?;
+    if end == 0 {
+        return None;
+    }
+    Some(tail[..end].to_string())
+}
+
+fn read_required_text_file(
+    workspace_root: &Path,
+    relative_path: &str,
+) -> Result<String, PipelineError> {
+    let path = workspace_root.join(relative_path);
+    if !path.exists() {
+        return Err(PipelineError::MissingInputArtifact(relative_path.to_string()));
+    }
+
+    std::fs::read_to_string(path.as_path()).map_err(io_error)
 }
 
 fn read_required_json<T>(workspace_root: &Path, relative_path: &str) -> Result<T, PipelineError>
