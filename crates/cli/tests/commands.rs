@@ -615,6 +615,53 @@ fn prepare_llm_bundle_subcommand_writes_bundle_path() {
 }
 
 #[test]
+fn generate_ui_subcommand_reports_generated_artifact_paths() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_ui_subcommand_reports_generated_artifact_paths");
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let prepare = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+        ])
+        .output()
+        .unwrap();
+    assert!(prepare.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "generate-ui should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("stage=generate-ui"));
+    assert!(stdout.contains("output/generated/"));
+    assert!(workspace_root.join("output/generated/react-tailwind/App.tsx").is_file());
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn agent_tool_find_nodes_json_mode_returns_candidates() {
     let workspace_root = unique_cli_workspace_root("agent_tool_find_nodes_json_mode");
 

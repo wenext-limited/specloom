@@ -9,7 +9,7 @@ use clap::Parser;
     long_about = "Run deterministic pipeline stages for Figma snapshot processing, spec building, and agent lookup context."
 )]
 #[command(
-    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
+    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom prepare-llm-bundle --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\" --target react-tailwind --intent \"Generate login\"\n  specloom generate-ui --bundle output/agent/llm_bundle.json\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
 )]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -58,6 +58,15 @@ enum Command {
         /// Developer intent for generation behavior.
         #[arg(long)]
         intent: String,
+        /// Output format for command results.
+        #[arg(long, value_enum, default_value_t = OutputMode::Text)]
+        output: OutputMode,
+    },
+    /// Generate target UI files from `output/agent/llm_bundle.json`.
+    GenerateUi {
+        /// Path to LLM bundle artifact.
+        #[arg(long)]
+        bundle: String,
         /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
@@ -356,6 +365,34 @@ fn main() {
                     Err(err) => emit_error_and_exit(err, output),
                 }
             }
+            Command::GenerateUi { bundle, output } => {
+                let request = core::GenerateUiRequest {
+                    bundle_path: bundle,
+                };
+                match core::generate_ui(&request) {
+                    Ok(result) => match output {
+                        OutputMode::Text => {
+                            println!(
+                                "stage=generate-ui generated={}",
+                                result.generated_paths.len()
+                            );
+                            for artifact_path in result.generated_paths {
+                                println!("artifact={artifact_path}");
+                            }
+                        }
+                        OutputMode::Json => {
+                            let artifacts = result
+                                .generated_paths
+                                .into_iter()
+                                .map(|path| format!("\"{}\"", json_escape(path.as_str())))
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            println!("{{\"stage\":\"generate-ui\",\"artifacts\":[{artifacts}]}}");
+                        }
+                    },
+                    Err(err) => emit_error_and_exit(err, output),
+                }
+            }
             Command::AgentTool { tool } => match tool {
                 AgentToolCommand::FindNodes {
                     query,
@@ -484,6 +521,7 @@ impl Command {
             Command::ExportAssets => "export-assets",
             Command::Generate { .. } => "generate",
             Command::PrepareLlmBundle { .. } => "prepare-llm-bundle",
+            Command::GenerateUi { .. } => "generate-ui",
             Command::Stages { .. } => "stages",
             Command::RunStage { .. } => "run-stage",
             Command::AgentTool { .. } => "agent-tool",
