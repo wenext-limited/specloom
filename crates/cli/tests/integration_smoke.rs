@@ -1,6 +1,6 @@
 #[test]
 fn cli_help_smoke() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .arg("--help")
         .output()
         .unwrap();
@@ -10,7 +10,7 @@ fn cli_help_smoke() {
 
 #[test]
 fn run_stage_success_smoke() {
-    let fetch_out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let fetch_out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .args(["run-stage", "fetch"])
         .output()
         .unwrap();
@@ -22,7 +22,7 @@ fn run_stage_success_smoke() {
     );
     assert!(fetch_out.stderr.is_empty());
 
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .args(["run-stage", "normalize"])
         .output()
         .unwrap();
@@ -37,7 +37,7 @@ fn run_stage_success_smoke() {
 
 #[test]
 fn run_stage_unknown_stage_smoke() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .args(["run-stage", "not-a-stage"])
         .output()
         .unwrap();
@@ -53,7 +53,7 @@ fn run_stage_unknown_stage_smoke() {
 fn generate_defaults_to_live_and_requires_inputs_smoke() {
     let workspace_root = unique_cli_workspace_root("generate_defaults_to_live_and_requires_inputs");
 
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .current_dir(workspace_root.as_path())
         .arg("generate")
         .env_remove("FIGMA_TOKEN")
@@ -76,7 +76,7 @@ fn generate_success_with_explicit_fixture_input_smoke() {
     let workspace_root =
         unique_cli_workspace_root("generate_success_with_explicit_fixture_input_smoke");
 
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cli"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture"])
         .output()
