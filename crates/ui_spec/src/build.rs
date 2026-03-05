@@ -174,6 +174,7 @@ fn build_ui_spec_node(
         NodeType::Button => UiSpec::Button {
             id: node.id.clone(),
             name: node.name.clone(),
+            text: String::new(),
             children,
         },
         NodeType::ScrollView => UiSpec::ScrollView {
@@ -280,6 +281,7 @@ fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {
         UiSpec::Button { id, name, .. } => UiSpec::Button {
             id: id.clone(),
             name: name.clone(),
+            text: String::new(),
             children,
         },
         UiSpec::ScrollView { id, name, .. } => UiSpec::ScrollView {
@@ -324,7 +326,12 @@ fn ui_spec_from_suggested_type(
         SuggestedNodeType::Image => UiSpec::Image { id, name, children },
         SuggestedNodeType::Shape => UiSpec::Shape { id, name, children },
         SuggestedNodeType::Vector => UiSpec::Vector { id, name, children },
-        SuggestedNodeType::Button => UiSpec::Button { id, name, children },
+        SuggestedNodeType::Button => UiSpec::Button {
+            id,
+            name,
+            text,
+            children,
+        },
         SuggestedNodeType::ScrollView => UiSpec::ScrollView { id, name, children },
         SuggestedNodeType::HStack => UiSpec::HStack { id, name, children },
         SuggestedNodeType::VStack => UiSpec::VStack { id, name, children },

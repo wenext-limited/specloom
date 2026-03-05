@@ -1,87 +1,40 @@
 pub const UI_SPEC_VERSION: &str = "2.0";
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum UiSpec {
-    Container {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "String::is_empty")]
-        text: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Instance {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Text {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Image {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Shape {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Vector {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    Button {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    ScrollView {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    HStack {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    VStack {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
-    ZStack {
-        id: String,
-        name: String,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        children: Vec<UiSpec>,
-    },
+macro_rules! define_ui_spec_enum {
+    (
+        containers: [$($container_variant:ident),+ $(,)?],
+        leaves: [$($leaf_variant:ident),+ $(,)?],
+    ) => {
+        #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum UiSpec {
+            $(
+                $container_variant {
+                    id: String,
+                    name: String,
+                    #[serde(default)]
+                    #[serde(skip_serializing_if = "String::is_empty")]
+                    text: String,
+                    #[serde(default)]
+                    #[serde(skip_serializing_if = "Vec::is_empty")]
+                    children: Vec<UiSpec>,
+                },
+            )+
+            $(
+                $leaf_variant {
+                    id: String,
+                    name: String,
+                    #[serde(default)]
+                    #[serde(skip_serializing_if = "Vec::is_empty")]
+                    children: Vec<UiSpec>,
+                },
+            )+
+        }
+    };
+}
+
+define_ui_spec_enum! {
+    containers: [Container, Button],
+    leaves: [Instance, Text, Image, Shape, Vector, ScrollView, HStack, VStack, ZStack],
 }
 
 impl Default for UiSpec {
