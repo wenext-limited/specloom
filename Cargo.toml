@@ -10,3 +10,11 @@ members = [
   "crates/agent_context",
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/WendellXY/forge"
+homepage = "https://github.com/WendellXY/forge"

@@ -177,7 +177,7 @@ Current known gap:
 
 ## 9. Crate Responsibilities (Current Workspace)
 
-1. `crates/cli` (`forge` package): CLI command surface and output formatting.
+1. `crates/cli` (`forge-figma-pipeline` package, `forge` binary): CLI command surface and output formatting.
 2. `crates/figma_client`: fixture/live/snapshot fetch + screenshot API client contracts.
 3. `crates/figma_normalizer`: canonical normalization with explicit warnings and passthrough fields.
 4. `crates/layout_infer`: deterministic layout inference library (not in default orchestration).
@@ -198,12 +198,12 @@ Current known gap:
 ## 11. Operator Workflow (Canonical CLI Pattern)
 
 ```bash
-cargo run -p forge -- stages
-cargo run -p forge -- fetch --input fixture
-cargo run -p forge -- generate --input fixture
-cargo run -p forge -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>"
-cargo run -p forge -- agent-tool find-nodes --query "login button" --output json
-cargo run -p forge -- agent-tool get-node-info --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- stages
+cargo run -p forge-figma-pipeline -- fetch --input fixture
+cargo run -p forge-figma-pipeline -- generate --input fixture
+cargo run -p forge-figma-pipeline -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>"
+cargo run -p forge-figma-pipeline -- agent-tool find-nodes --query "login button" --output json
+cargo run -p forge-figma-pipeline -- agent-tool get-node-info --node-id <NODE_ID>
 ```
 
 Defaults:

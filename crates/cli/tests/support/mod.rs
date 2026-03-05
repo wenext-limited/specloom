@@ -117,7 +117,9 @@ pub fn start_single_binary_response_server(
     let body = body.to_vec();
 
     let server_thread = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("image server should accept request");
+        let (mut stream, _) = listener
+            .accept()
+            .expect("image server should accept request");
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(2)))
             .expect("image server should set read timeout");

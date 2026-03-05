@@ -3,15 +3,6 @@
 version = 4
 
 [[package]]
-name = "agent_context"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -59,15 +50,6 @@ dependencies = [
  "anstyle",
  "once_cell_polyfill",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "asset_pipeline"
-version = "0.1.0"
-dependencies = [
- "figma_normalizer",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -189,7 +171,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "figma_client"
+name = "find-msvc-tools"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
+name = "forge-agent-context"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "forge-asset-pipeline"
+version = "0.1.0"
+dependencies = [
+ "forge-figma-normalizer",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "forge-figma-client"
 version = "0.1.0"
 dependencies = [
  "reqwest",
@@ -199,30 +205,61 @@ dependencies = [
 ]
 
 [[package]]
-name = "figma_normalizer"
+name = "forge-figma-normalizer"
 version = "0.1.0"
 dependencies = [
- "figma_client",
+ "forge-figma-client",
  "serde",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "find-msvc-tools"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+name = "forge-figma-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "forge-agent-context",
+ "forge-asset-pipeline",
+ "forge-figma-client",
+ "forge-figma-normalizer",
+ "forge-ui-spec",
+ "reqwest",
+ "ron",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
-name = "forge"
+name = "forge-figma-pipeline"
 version = "0.1.0"
 dependencies = [
  "clap",
- "figma_client",
- "orchestrator",
+ "forge-figma-client",
+ "forge-figma-orchestrator",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "forge-layout-infer"
+version = "0.1.0"
+dependencies = [
+ "forge-figma-normalizer",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "forge-ui-spec"
+version = "0.1.0"
+dependencies = [
+ "forge-figma-normalizer",
+ "forge-layout-infer",
+ "ron",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -557,15 +594,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "layout_infer"
-version = "0.1.0"
-dependencies = [
- "figma_normalizer",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -617,22 +645,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "orchestrator"
-version = "0.1.0"
-dependencies = [
- "agent_context",
- "asset_pipeline",
- "figma_client",
- "figma_normalizer",
- "reqwest",
- "ron",
- "serde",
- "serde_json",
- "thiserror",
- "ui_spec",
-]
 
 [[package]]
 name = "percent-encoding"
@@ -1167,18 +1179,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "ui_spec"
-version = "0.1.0"
-dependencies = [
- "figma_normalizer",
- "layout_infer",
- "ron",
- "serde",
- "serde_json",
- "thiserror",
-]
 
 [[package]]
 name = "unicode-ident"

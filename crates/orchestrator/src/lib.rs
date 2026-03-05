@@ -26,17 +26,17 @@ impl PipelineError {
     pub fn actionable_message(&self) -> String {
         match self {
             Self::UnknownStage(stage) => format!(
-                "unknown stage: {stage}. Valid stages: {}. Run `cli stages` to list stage output directories.",
+                "unknown stage: {stage}. Valid stages: {}. Run `forge stages` to list stage output directories.",
                 pipeline_stage_names().join(", ")
             ),
             Self::MissingInputArtifact(artifact_path) => {
                 if let Some(stage_name) = producer_stage_for_artifact(artifact_path.as_str()) {
                     format!(
-                        "missing input artifact: {artifact_path}. Run `cli run-stage {stage_name}` first, or run `cli generate` to execute the full pipeline."
+                        "missing input artifact: {artifact_path}. Run `forge run-stage {stage_name}` first, or run `forge generate` to execute the full pipeline."
                     )
                 } else {
                     format!(
-                        "missing input artifact: {artifact_path}. Run `cli generate` to execute the full pipeline."
+                        "missing input artifact: {artifact_path}. Run `forge generate` to execute the full pipeline."
                     )
                 }
             }
@@ -542,7 +542,10 @@ fn run_build_spec_stage(workspace_root: &Path) -> Result<String, PipelineError> 
     let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
     let transform_plan_bytes =
         serde_json::to_vec_pretty(&transform_plan).map_err(serialization_error)?;
-    write_bytes(transform_plan_path.as_path(), transform_plan_bytes.as_slice())?;
+    write_bytes(
+        transform_plan_path.as_path(),
+        transform_plan_bytes.as_slice(),
+    )?;
 
     let spec =
         ui_spec::apply_transform_plan(&pre_layout, &transform_plan).map_err(ui_spec_build_error)?;
@@ -601,7 +604,12 @@ fn run_build_agent_context_stage(
     let root_node_id = spec.id().to_string();
     let root_screenshot_ref = format!("output/images/root_{}.png", root_node_id.replace(':', "_"));
 
-    maybe_write_root_screenshot(workspace_root, config, root_node_id.as_str(), root_screenshot_ref.as_str())?;
+    maybe_write_root_screenshot(
+        workspace_root,
+        config,
+        root_node_id.as_str(),
+        root_screenshot_ref.as_str(),
+    )?;
 
     let context = agent_context::AgentContext {
         version: "agent_context/1.0".to_string(),
@@ -634,7 +642,10 @@ fn run_build_agent_context_stage(
     let index_bytes = serde_json::to_vec_pretty(&search_index).map_err(serialization_error)?;
     write_bytes(index_path.as_path(), index_bytes.as_slice())?;
 
-    Ok(normalize_result_path(workspace_root, context_path.as_path()))
+    Ok(normalize_result_path(
+        workspace_root,
+        context_path.as_path(),
+    ))
 }
 
 fn maybe_write_root_screenshot(
@@ -660,12 +671,15 @@ fn maybe_write_root_screenshot(
         live_config.api_base_url.clone(),
     )
     .map_err(fetch_client_error)?;
-    let screenshot = figma_client::fetch_node_screenshot_live(&request).map_err(fetch_client_error)?;
+    let screenshot =
+        figma_client::fetch_node_screenshot_live(&request).map_err(fetch_client_error)?;
 
     let response = reqwest::blocking::Client::new()
         .get(screenshot.image_url.as_str())
         .send()
-        .map_err(|err| PipelineError::FetchClient(format!("screenshot download transport error: {err}")))?;
+        .map_err(|err| {
+            PipelineError::FetchClient(format!("screenshot download transport error: {err}"))
+        })?;
     let status = response.status();
     if !status.is_success() {
         let body = response
@@ -676,9 +690,9 @@ fn maybe_write_root_screenshot(
             status.as_u16()
         )));
     }
-    let bytes = response
-        .bytes()
-        .map_err(|err| PipelineError::FetchClient(format!("screenshot download decode error: {err}")))?;
+    let bytes = response.bytes().map_err(|err| {
+        PipelineError::FetchClient(format!("screenshot download decode error: {err}"))
+    })?;
 
     write_bytes(screenshot_path.as_path(), bytes.as_ref())
 }
@@ -689,7 +703,11 @@ fn build_skeleton_nodes(root: &ui_spec::UiSpec) -> Vec<agent_context::SkeletonNo
     nodes
 }
 
-fn flatten_skeleton(node: &ui_spec::UiSpec, parent_path: &str, out: &mut Vec<agent_context::SkeletonNode>) {
+fn flatten_skeleton(
+    node: &ui_spec::UiSpec,
+    parent_path: &str,
+    out: &mut Vec<agent_context::SkeletonNode>,
+) {
     let name = node_name(node).to_string();
     let path = if parent_path.is_empty() {
         name.clone()
@@ -981,7 +999,6 @@ fn normalizer_error(err: figma_normalizer::NormalizationError) -> PipelineError 
 fn ui_spec_build_error(err: ui_spec::UiSpecBuildError) -> PipelineError {
     PipelineError::UiSpecBuild(err.to_string())
 }
-
 
 #[cfg(test)]
 mod tests;

@@ -1,11 +1,19 @@
 [package]
-name = "ui_spec"
-version = "0.1.0"
-edition = "2024"
+name = "forge-ui-spec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Versioned UI spec and transform-plan contracts for Forge."
+documentation = "https://docs.rs/forge-ui-spec"
+keywords = ["figma", "ui", "spec", "pipeline", "serde"]
+categories = ["data-structures", "development-tools"]
 
 [dependencies]
-figma_normalizer = { path = "../figma_normalizer" }
-layout_infer = { path = "../layout_infer" }
+figma_normalizer = { package = "forge-figma-normalizer", path = "../figma_normalizer", version = "=0.1.0" }
+layout_infer = { package = "forge-layout-infer", path = "../layout_infer", version = "=0.1.0" }
 ron = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

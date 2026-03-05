@@ -9,6 +9,13 @@ This repository implements a deterministic, stage-based pipeline that produces:
 3. agent context/search artifacts for lookup tooling
 4. asset manifest metadata
 
+## Install from crates.io
+
+```bash
+cargo install forge-figma-pipeline
+forge --help
+```
+
 ## Quickstart
 
 Run from the repository root:
@@ -16,8 +23,8 @@ Run from the repository root:
 ```bash
 cargo check --workspace
 cargo test --workspace
-cargo run -p cli -- fetch --input fixture
-cargo run -p cli -- generate --input fixture
+cargo run -p forge-figma-pipeline -- fetch --input fixture
+cargo run -p forge-figma-pipeline -- generate --input fixture
 ```
 
 The `generate` command runs the full pipeline in order and writes artifacts under `output/`.
@@ -33,15 +40,15 @@ export FIGMA_TOKEN="<YOUR_FIGMA_PERSONAL_ACCESS_TOKEN>"
 Fetch and inspect a real node snapshot:
 
 ```bash
-cargo run -p cli -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
-cargo run -p cli -- fetch --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p forge-figma-pipeline -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- fetch --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
 ```
 
 Run the full pipeline from live Figma data:
 
 ```bash
-cargo run -p cli -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
-cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p forge-figma-pipeline -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
 ```
 
 ## Inputs and Outputs
@@ -51,11 +58,13 @@ Input modes:
 1. `fixture`: uses a built-in deterministic payload for local/testing runs.
 2. `live`: calls the Figma API with either `--file-key` + `--node-id`, or a single `--figma-url`.
 3. `snapshot`: loads an existing raw snapshot via `--snapshot-path` and reuses it as fetch output.
-4. Defaults:
-5. `fetch` defaults to `--input fixture`.
-6. `generate` defaults to `--input live`.
-7. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
-8. Downstream stages read prior artifacts from `output/`.
+
+Defaults:
+
+1. `fetch` defaults to `--input fixture`.
+2. `generate` defaults to `--input live`.
+3. `FIGMA_TOKEN` env (or `--figma-token`) is required for `live`.
+4. Downstream stages read prior artifacts from `output/`.
 
 Generated artifacts:
 
@@ -83,64 +92,64 @@ For live `generate` runs, `build-agent-context` also downloads the root-node scr
 List stage output directories:
 
 ```bash
-cargo run -p cli -- stages
-cargo run -p cli -- stages --output json
+cargo run -p forge-figma-pipeline -- stages
+cargo run -p forge-figma-pipeline -- stages --output json
 ```
 
 Run one stage:
 
 ```bash
-cargo run -p cli -- run-stage fetch
-cargo run -p cli -- run-stage normalize --output json
+cargo run -p forge-figma-pipeline -- run-stage fetch
+cargo run -p forge-figma-pipeline -- run-stage normalize --output json
 ```
 
 Run fetch stage directly (fixture or live):
 
 ```bash
-cargo run -p cli -- fetch
-cargo run -p cli -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
-cargo run -p cli -- fetch --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
-cargo run -p cli -- fetch --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
+cargo run -p forge-figma-pipeline -- fetch
+cargo run -p forge-figma-pipeline -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- fetch --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p forge-figma-pipeline -- fetch --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
 Run full pipeline:
 
 ```bash
-cargo run -p cli -- generate --input fixture
-cargo run -p cli -- generate --input fixture --output json
-cargo run -p cli -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
-cargo run -p cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
-cargo run -p cli -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
+cargo run -p forge-figma-pipeline -- generate --input fixture
+cargo run -p forge-figma-pipeline -- generate --input fixture --output json
+cargo run -p forge-figma-pipeline -- generate --input live --file-key <FILE_KEY> --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
+cargo run -p forge-figma-pipeline -- generate --input snapshot --snapshot-path <PATH_TO_FETCH_SNAPSHOT_JSON>
 ```
 
 Run agent lookup tools (stateless run-and-consume):
 
 ```bash
-cargo run -p cli -- agent-tool find-nodes --query "welcome back" --output json
-cargo run -p cli -- agent-tool get-node-info --node-id <NODE_ID>
-cargo run -p cli -- agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- agent-tool find-nodes --query "welcome back" --output json
+cargo run -p forge-figma-pipeline -- agent-tool get-node-info --node-id <NODE_ID>
+cargo run -p forge-figma-pipeline -- agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID>
 ```
 
 ## CLI Workflow Matrix
 
 | Goal | Command | Output Mode |
 | --- | --- | --- |
-| Inspect all stage output directories | `cargo run -p cli -- stages` | text (default) |
-| Inspect all stage output directories as machine-readable data | `cargo run -p cli -- stages --output json` | json |
-| Run fetch stage with fixture input | `cargo run -p cli -- fetch --input fixture` | text (default) |
-| Run fetch stage with live Figma input | `cargo run -p cli -- fetch --input live --file-key <file> --node-id <node>` | text (default) |
-| Run fetch stage with Figma quick link input | `cargo run -p cli -- fetch --input live --figma-url "<figma-url>"` | text (default) |
-| Run fetch stage with existing snapshot artifact | `cargo run -p cli -- fetch --input snapshot --snapshot-path <path>` | text (default) |
-| Run one stage with human-readable output | `cargo run -p cli -- run-stage <stage>` | text (default) |
-| Run one stage with machine-readable output | `cargo run -p cli -- run-stage <stage> --output json` | json |
-| Run end-to-end pipeline with fixture input and per-stage artifact lines | `cargo run -p cli -- generate --input fixture` | text (default) |
-| Run end-to-end pipeline with live Figma input | `cargo run -p cli -- generate --input live --file-key <file> --node-id <node>` | text (default) |
-| Run end-to-end pipeline with Figma quick link input | `cargo run -p cli -- generate --input live --figma-url "<figma-url>"` | text (default) |
-| Run end-to-end pipeline from existing snapshot artifact | `cargo run -p cli -- generate --input snapshot --snapshot-path <path>` | text (default) |
-| Run end-to-end pipeline with fixture input and structured stage results | `cargo run -p cli -- generate --input fixture --output json` | json |
-| Find candidate nodes via deterministic fuzzy lookup | `cargo run -p cli -- agent-tool find-nodes --query "<text>" --output json` | text/json |
-| Read indexed node details | `cargo run -p cli -- agent-tool get-node-info --node-id <id>` | text/json |
-| Fetch node screenshot directly from Figma images API | `cargo run -p cli -- agent-tool get-node-screenshot --file-key <file> --node-id <node>` | text/json |
+| Inspect all stage output directories | `cargo run -p forge-figma-pipeline -- stages` | text (default) |
+| Inspect all stage output directories as machine-readable data | `cargo run -p forge-figma-pipeline -- stages --output json` | json |
+| Run fetch stage with fixture input | `cargo run -p forge-figma-pipeline -- fetch --input fixture` | text (default) |
+| Run fetch stage with live Figma input | `cargo run -p forge-figma-pipeline -- fetch --input live --file-key <file> --node-id <node>` | text (default) |
+| Run fetch stage with Figma quick link input | `cargo run -p forge-figma-pipeline -- fetch --input live --figma-url "<figma-url>"` | text (default) |
+| Run fetch stage with existing snapshot artifact | `cargo run -p forge-figma-pipeline -- fetch --input snapshot --snapshot-path <path>` | text (default) |
+| Run one stage with human-readable output | `cargo run -p forge-figma-pipeline -- run-stage <stage>` | text (default) |
+| Run one stage with machine-readable output | `cargo run -p forge-figma-pipeline -- run-stage <stage> --output json` | json |
+| Run end-to-end pipeline with fixture input and per-stage artifact lines | `cargo run -p forge-figma-pipeline -- generate --input fixture` | text (default) |
+| Run end-to-end pipeline with live Figma input | `cargo run -p forge-figma-pipeline -- generate --input live --file-key <file> --node-id <node>` | text (default) |
+| Run end-to-end pipeline with Figma quick link input | `cargo run -p forge-figma-pipeline -- generate --input live --figma-url "<figma-url>"` | text (default) |
+| Run end-to-end pipeline from existing snapshot artifact | `cargo run -p forge-figma-pipeline -- generate --input snapshot --snapshot-path <path>` | text (default) |
+| Run end-to-end pipeline with fixture input and structured stage results | `cargo run -p forge-figma-pipeline -- generate --input fixture --output json` | json |
+| Find candidate nodes via deterministic fuzzy lookup | `cargo run -p forge-figma-pipeline -- agent-tool find-nodes --query "<text>" --output json` | text/json |
+| Read indexed node details | `cargo run -p forge-figma-pipeline -- agent-tool get-node-info --node-id <id>` | text/json |
+| Fetch node screenshot directly from Figma images API | `cargo run -p forge-figma-pipeline -- agent-tool get-node-screenshot --file-key <file> --node-id <node>` | text/json |
 
 Notes:
 
@@ -172,3 +181,16 @@ cargo check --workspace
 cargo test --workspace
 bash scripts/verify_workspace.sh
 ```
+
+## Open-Source Project Docs
+
+1. Contribution workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+2. Community standards: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+3. Security reporting: [`SECURITY.md`](SECURITY.md)
+
+## License
+
+Licensed under either of:
+
+1. Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+2. MIT License ([LICENSE-MIT](LICENSE-MIT))

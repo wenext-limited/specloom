@@ -270,7 +270,7 @@ fn run_stage_subcommand_rejects_unknown_stage() {
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
     assert!(stderr.contains("Valid stages:"));
-    assert!(stderr.contains("Run `cli stages`"));
+    assert!(stderr.contains("Run `forge stages`"));
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn run_stage_subcommand_reports_missing_input_artifact_actionably() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr.contains("missing input artifact"));
     assert!(stderr.contains("run-stage fetch"));
-    assert!(stderr.contains("cli generate"));
+    assert!(stderr.contains("forge generate"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }

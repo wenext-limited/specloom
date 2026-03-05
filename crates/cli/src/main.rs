@@ -3,13 +3,13 @@
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[command(name = "cli")]
+#[command(name = "forge")]
 #[command(about = "Figma node tree to spec-first pipeline CLI")]
 #[command(
     long_about = "Run deterministic pipeline stages for Figma snapshot processing, spec building, and agent lookup context."
 )]
 #[command(
-    after_long_help = "Examples:\n  cli generate --input fixture\n  cli generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  cli run-stage build-spec\n  cli agent-tool find-nodes --query \"login button\" --output json"
+    after_long_help = "Examples:\n  forge generate --input fixture\n  forge generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  forge run-stage build-spec\n  forge agent-tool find-nodes --query \"login button\" --output json"
 )]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -53,7 +53,7 @@ enum Command {
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
     },
-    /// Run one stage by name (see `cli stages`).
+    /// Run one stage by name (see `forge stages`).
     RunStage {
         /// Stage name (fetch, normalize, build-spec, build-agent-context, export-assets).
         #[arg(value_name = "STAGE")]

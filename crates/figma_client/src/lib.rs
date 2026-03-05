@@ -269,10 +269,7 @@ pub fn fetch_node_screenshot_live_with_base_url(
     let response = reqwest::blocking::Client::new()
         .get(api_url)
         .header("X-Figma-Token", figma_token)
-        .query(&[
-            ("ids", request.node_id.as_str()),
-            ("format", "png"),
-        ])
+        .query(&[("ids", request.node_id.as_str()), ("format", "png")])
         .send()
         .map_err(|err| FetchClientError::HttpTransport(err.to_string()))?;
 
