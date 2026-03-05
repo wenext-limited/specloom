@@ -1,6 +1,6 @@
 ---
 name: generating-ui-spec-ron
-description: Use when converting pre_layout artifacts into final output/specs/ui_spec.ron through transform_plan authoring and deterministic build-spec application.
+description: Use when converting pre_layout artifacts into final output/specs/ui_spec.ron through screenshot-grounded transform_plan authoring and deterministic build-spec application.
 ---
 
 # Generating ui_spec.ron
@@ -9,7 +9,7 @@ description: Use when converting pre_layout artifacts into final output/specs/ui
 
 Orchestrate this flow only:
 
-`pre_layout.ron + node evidence -> transform_plan.json -> build-spec -> ui_spec.ron`
+`pre_layout.ron + node evidence + screenshot grounding -> transform_plan.json -> build-spec -> ui_spec.ron`
 
 Hard rules:
 
@@ -25,8 +25,8 @@ Hard rules:
 
 ## Quick Runbook
 
-1. Confirm inputs: `output/specs/pre_layout.ron`, `output/specs/node_map.json`.
-2. Ground node decisions with `node-grounding-for-transform`.
+1. Confirm inputs: `output/specs/pre_layout.ron`, `output/specs/node_map.json`, and root screenshot (`output/images/root_<node_id>.png`) when available.
+2. Ground node decisions with `node-grounding-for-transform` (including screenshot checks for root and ambiguous/text-less nodes).
 3. Apply optional sub-skills only when evidence requires.
 4. Write `output/specs/transform_plan.json` using `authoring-transform-plan`.
 5. Run exactly one:
@@ -37,4 +37,5 @@ Hard rules:
 ## Definition of Done
 
 1. `ui_spec.ron` reflects transform decisions.
-2. No manual spec patching occurred.
+2. Screenshot grounding was applied for root and ambiguity hotspots (or absence was explicitly noted for fixture/snapshot runs).
+3. No manual spec patching occurred.

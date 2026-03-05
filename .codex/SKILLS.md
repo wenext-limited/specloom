@@ -10,11 +10,11 @@ Use when deciding container layout strategy (`v_stack`, `h_stack`, `overlay`, `a
 
 2. `generating-ui-spec-ron`
 Path: `.codex/skills/generating-ui-spec-ron/SKILL.md`
-Use when orchestrating pre-layout artifacts into final `output/specs/ui_spec.ron`.
+Use when orchestrating screenshot-grounded pre-layout artifacts into final `output/specs/ui_spec.ron`.
 
 3. `node-grounding-for-transform`
 Path: `.codex/skills/node-grounding-for-transform/SKILL.md`
-Use when transform decisions need authoritative node evidence.
+Use when transform decisions need authoritative node evidence plus screenshot grounding for root/ambiguous nodes.
 
 4. `authoring-transform-plan`
 Path: `.codex/skills/authoring-transform-plan/SKILL.md`
