@@ -31,7 +31,7 @@ pub fn build_pre_layout_spec(
         return Err(UiSpecBuildError::MissingNormalizedRootNode(root_node_id));
     }
 
-    build_pre_layout_node(root_node_id.as_str(), &nodes_by_id)
+    build_ui_spec_node(root_node_id.as_str(), &nodes_by_id)
 }
 
 pub fn apply_transform_plan(
@@ -49,55 +49,6 @@ pub fn apply_transform_plan(
         .collect::<BTreeMap<_, _>>();
 
     apply_transform_node(pre_layout, &decisions_by_node)
-}
-
-pub fn build_ui_spec(
-    normalized: &figma_normalizer::NormalizationOutput,
-    _inferred: &layout_infer::InferredLayoutDocument,
-) -> Result<UiSpec, UiSpecBuildError> {
-    let nodes_by_id = normalized
-        .document
-        .nodes
-        .iter()
-        .map(|node| (node.id.as_str(), node))
-        .collect::<BTreeMap<_, _>>();
-
-    let root_node_id = normalized.document.source.root_node_id.clone();
-    if !nodes_by_id.contains_key(root_node_id.as_str()) {
-        return Err(UiSpecBuildError::MissingNormalizedRootNode(root_node_id));
-    }
-
-    build_ui_spec_node(root_node_id.as_str(), &nodes_by_id)
-}
-
-fn build_pre_layout_node(
-    node_id: &str,
-    nodes_by_id: &BTreeMap<&str, &figma_normalizer::NormalizedNode>,
-) -> Result<UiSpec, UiSpecBuildError> {
-    let node = nodes_by_id
-        .get(node_id)
-        .copied()
-        .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(node_id.to_string()))?;
-
-    let mut children = Vec::new();
-    for child_id in &node.children {
-        let child = nodes_by_id
-            .get(child_id.as_str())
-            .copied()
-            .ok_or_else(|| UiSpecBuildError::MissingNormalizedNode(child_id.clone()))?;
-        if !child.visible {
-            continue;
-        }
-        children.push(build_pre_layout_node(child_id.as_str(), nodes_by_id)?);
-    }
-
-    Ok(ui_spec_from_node_type(
-        map_node_type(node),
-        node.id.clone(),
-        node.name.clone(),
-        children,
-        String::new(),
-    ))
 }
 
 fn build_ui_spec_node(
@@ -378,33 +329,6 @@ fn ui_spec_from_suggested_type(
         SuggestedNodeType::HStack => UiSpec::HStack { id, name, children },
         SuggestedNodeType::VStack => UiSpec::VStack { id, name, children },
         SuggestedNodeType::ZStack => UiSpec::ZStack { id, name, children },
-    }
-}
-
-fn ui_spec_from_node_type(
-    node_type: NodeType,
-    id: String,
-    name: String,
-    children: Vec<UiSpec>,
-    text: String,
-) -> UiSpec {
-    match node_type {
-        NodeType::Container => UiSpec::Container {
-            id,
-            name,
-            text,
-            children,
-        },
-        NodeType::Instance => UiSpec::Instance { id, name, children },
-        NodeType::Text => UiSpec::Text { id, name, children },
-        NodeType::Image => UiSpec::Image { id, name, children },
-        NodeType::Shape => UiSpec::Shape { id, name, children },
-        NodeType::Vector => UiSpec::Vector { id, name, children },
-        NodeType::Button => UiSpec::Button { id, name, children },
-        NodeType::ScrollView => UiSpec::ScrollView { id, name, children },
-        NodeType::HStack => UiSpec::HStack { id, name, children },
-        NodeType::VStack => UiSpec::VStack { id, name, children },
-        NodeType::ZStack => UiSpec::ZStack { id, name, children },
     }
 }
 

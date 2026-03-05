@@ -347,30 +347,6 @@ fn apply_transform_plan_replace_with_rewires_children_order() {
 }
 
 #[test]
-fn build_pre_layout_spec_keeps_single_text_child_without_collapse() {
-    let normalized = figma_normalizer::NormalizationOutput {
-        document: figma_normalizer::NormalizedDocument {
-            schema_version: figma_normalizer::NORMALIZED_SCHEMA_VERSION.to_string(),
-            source: figma_normalizer::NormalizedSource {
-                file_key: "abc123".to_string(),
-                root_node_id: "1:1".to_string(),
-                figma_api_version: figma_normalizer::FIGMA_API_VERSION.to_string(),
-            },
-            nodes: vec![
-                container_node("1:1", vec!["1:2".to_string()]),
-                text_node("1:2"),
-            ],
-        },
-        warnings: Vec::new(),
-    };
-
-    let pre_layout = build_pre_layout_spec(&normalized).expect("build should succeed");
-    assert_eq!(pre_layout.node_type(), NodeType::Container);
-    assert_eq!(pre_layout.children().len(), 1);
-    assert_eq!(pre_layout.children()[0].node_type(), NodeType::Text);
-}
-
-#[test]
 fn build_ui_spec_preserves_original_node_ids() {
     let normalized = figma_normalizer::NormalizationOutput {
         document: figma_normalizer::NormalizedDocument {
@@ -388,14 +364,8 @@ fn build_ui_spec_preserves_original_node_ids() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.id(), "1:1");
     assert_eq!(spec.node_type(), NodeType::Container);
     assert_eq!(spec.children().len(), 2);
@@ -423,14 +393,8 @@ fn build_ui_spec_marks_image_fill_nodes_as_image() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Container);
     assert_eq!(spec.children()[0].node_type(), NodeType::Image);
 }
@@ -452,14 +416,8 @@ fn build_ui_spec_collapses_container_with_single_text_child_into_text_field() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Container);
     assert!(spec.children().is_empty());
     match spec {
@@ -491,14 +449,8 @@ fn build_ui_spec_omits_invisible_nodes() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let child_ids = spec
         .children()
         .iter()
@@ -526,14 +478,8 @@ fn build_ui_spec_rejects_missing_root_node() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "missing-root".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let err = build_ui_spec(&normalized, &inferred).expect_err("missing root should fail");
+    let err = build_pre_layout_spec(&normalized).expect_err("missing root should fail");
     assert!(
         err.to_string()
             .contains("missing normalized root node: missing-root")
@@ -582,14 +528,8 @@ fn build_ui_spec_maps_unknown_leaf_node_kind_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Vector);
 }
 
@@ -638,14 +578,8 @@ fn build_ui_spec_maps_unknown_node_with_children_to_container() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Container);
     assert!(spec.children().is_empty());
     match spec {
@@ -672,14 +606,8 @@ fn build_ui_spec_maps_instance_kind_to_instance() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.children()[0].node_type(), NodeType::Instance);
     assert_eq!(spec.children()[0].children().len(), 1);
     assert_eq!(spec.children()[0].children()[0].node_type(), NodeType::Text);
@@ -703,14 +631,8 @@ fn build_ui_spec_maps_rectangle_kind_to_shape() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Container);
     assert_eq!(spec.children()[0].node_type(), NodeType::Shape);
 }
@@ -733,14 +655,8 @@ fn build_ui_spec_collapses_container_with_all_shape_children_to_shape() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Shape);
     assert!(spec.children().is_empty());
 }
@@ -767,14 +683,8 @@ fn build_ui_spec_collapses_container_with_one_image_and_shapes_to_image() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Image);
     assert!(spec.children().is_empty());
 }
@@ -803,14 +713,8 @@ fn build_ui_spec_collapses_instance_with_one_image_and_shapes_to_image() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Image);
     assert!(collapsed.children().is_empty());
@@ -833,14 +737,8 @@ fn build_ui_spec_collapses_container_with_single_image_child_to_image() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Image);
     assert!(spec.children().is_empty());
 }
@@ -864,14 +762,8 @@ fn build_ui_spec_collapses_instance_with_single_image_child_to_image() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Image);
     assert!(collapsed.children().is_empty());
@@ -899,14 +791,8 @@ fn build_ui_spec_collapses_container_with_one_vector_and_shapes_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Vector);
     assert!(spec.children().is_empty());
 }
@@ -935,14 +821,8 @@ fn build_ui_spec_drops_children_for_instance_with_one_vector_and_shapes() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Instance);
     assert!(collapsed.children().is_empty());
@@ -978,14 +858,8 @@ fn build_ui_spec_drops_children_for_instance_with_multiple_vectors_and_shapes() 
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Instance);
     assert!(collapsed.children().is_empty());
@@ -1008,14 +882,8 @@ fn build_ui_spec_collapses_container_with_single_vector_child_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Vector);
     assert!(spec.children().is_empty());
 }
@@ -1038,14 +906,8 @@ fn build_ui_spec_collapses_container_with_multiple_vector_children_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     assert_eq!(spec.node_type(), NodeType::Vector);
     assert!(spec.children().is_empty());
 }
@@ -1069,14 +931,8 @@ fn build_ui_spec_collapses_instance_with_single_vector_child_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Vector);
     assert!(collapsed.children().is_empty());
@@ -1102,14 +958,8 @@ fn build_ui_spec_collapses_instance_with_multiple_vector_children_to_vector() {
         },
         warnings: Vec::new(),
     };
-    let inferred = layout_infer::InferredLayoutDocument {
-        inference_version: layout_infer::LAYOUT_DECISION_VERSION.to_string(),
-        source_file_key: "abc123".to_string(),
-        root_node_id: "1:1".to_string(),
-        decisions: Vec::new(),
-    };
 
-    let spec = build_ui_spec(&normalized, &inferred).expect("build should succeed");
+    let spec = build_pre_layout_spec(&normalized).expect("build should succeed");
     let collapsed = &spec.children()[0];
     assert_eq!(collapsed.node_type(), NodeType::Vector);
     assert!(collapsed.children().is_empty());
