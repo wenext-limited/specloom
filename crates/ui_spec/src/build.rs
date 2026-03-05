@@ -14,6 +14,8 @@ pub enum UiSpecBuildError {
     InvalidTransformPlan(String),
     #[error("replacement child missing after validation for node {node_id}: {child_id}")]
     ReplacementChildMissingAfterValidation { node_id: String, child_id: String },
+    #[error("root node removed by transform plan: {0}")]
+    RootNodeRemovedByTransformPlan(String),
 }
 
 pub fn build_pre_layout_spec(
@@ -48,7 +50,9 @@ pub fn apply_transform_plan(
         .map(|decision| (decision.node_id.as_str(), decision))
         .collect::<BTreeMap<_, _>>();
 
-    apply_transform_node(pre_layout, &decisions_by_node)
+    apply_transform_node(pre_layout, &decisions_by_node)?.ok_or_else(|| {
+        UiSpecBuildError::RootNodeRemovedByTransformPlan(pre_layout.id().to_string())
+    })
 }
 
 fn build_ui_spec_node(
@@ -221,17 +225,23 @@ fn build_ui_spec_node(
 fn apply_transform_node(
     node: &UiSpec,
     decisions_by_node: &BTreeMap<&str, &TransformDecision>,
-) -> Result<UiSpec, UiSpecBuildError> {
-    let transformed_children = node
-        .children()
-        .iter()
-        .map(|child| apply_transform_node(child, decisions_by_node))
-        .collect::<Result<Vec<_>, _>>()?;
+) -> Result<Option<UiSpec>, UiSpecBuildError> {
+    let mut transformed_children = Vec::with_capacity(node.children().len());
+    for child in node.children() {
+        if let Some(transformed_child) = apply_transform_node(child, decisions_by_node)? {
+            transformed_children.push(transformed_child);
+        }
+    }
 
     if let Some(decision) = decisions_by_node.get(node.id()) {
+        if decision.child_policy.mode == ChildPolicyMode::RemoveSelf {
+            return Ok(None);
+        }
+
         let transformed_children = match decision.child_policy.mode {
             ChildPolicyMode::Keep => transformed_children,
             ChildPolicyMode::Drop => Vec::new(),
+            ChildPolicyMode::RemoveSelf => unreachable!("handled above"),
             ChildPolicyMode::ReplaceWith => {
                 let mut children_by_id = transformed_children
                     .into_iter()
@@ -250,18 +260,22 @@ fn apply_transform_node(
                 selected
             }
         };
+        let repeat_element_ids = decision
+            .repeat_element_ids
+            .clone()
+            .unwrap_or_else(|| node.repeat_element_ids().to_vec());
 
-        return Ok(ui_spec_from_suggested_type(
+        return Ok(Some(ui_spec_from_suggested_type(
             decision.suggested_type,
             node.id().to_string(),
             node_name(node).to_string(),
             transformed_children,
             container_text(node),
-            node.repeat_element_ids().to_vec(),
-        ));
+            repeat_element_ids,
+        )));
     }
 
-    Ok(rebuild_node_with_children(node, transformed_children))
+    Ok(Some(rebuild_node_with_children(node, transformed_children)))
 }
 
 fn rebuild_node_with_children(node: &UiSpec, children: Vec<UiSpec>) -> UiSpec {

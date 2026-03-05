@@ -17,7 +17,7 @@ Final spec must come from transform-plan application.
 
 - You are in `build-spec` transform planning.
 - You need semantic node upgrades (`Button`, `ScrollView`, `HStack`, etc.).
-- You must decide `child_policy` (`keep`, `drop`, `replace_with`) safely.
+- You must decide `child_policy` (`keep`, `drop`, `remove_self`, `replace_with`) safely.
 - Screenshot evidence is needed to disambiguate weak or text-less structures.
 
 Do not use this skill when you are only inspecting an existing spec without changing transforms.
@@ -76,12 +76,14 @@ Rules:
 6. Write `output/specs/transform_plan.json` with:
 - `version = "transform_plan/1.0"`
 - one decision per transformed node
+- optional `repeat_element_ids` on decisions when overriding repeat metadata for that node
 7. Validate before apply:
 - no duplicate `decision.node_id`
 - all decision nodes exist in pre-layout
-- `keep` and `drop` have no `children`
+- `keep`, `drop`, and `remove_self` have no `children`
 - `replace_with` has non-empty `children`
 - each replacement child exists and is a direct child of the decision node
+- `replace_with` cannot reference a child node that is itself marked `remove_self`
 - inferred `repeat_element_ids` (if present) are unique and ordered stably for repeating the current node
 - no unknown fields (plan structs use `deny_unknown_fields`)
 8. Apply mechanically with exactly one of:
@@ -96,7 +98,9 @@ Rules:
 | `suggested_type`                   | `Container`, `Instance`, `Text`, `Image`, `Shape`, `Vector`, `Button`, `ScrollView`, `HStack`, `VStack`, `ZStack` |
 | `child_policy.mode = keep`         | keep transformed children; do not include `children`                                                              |
 | `child_policy.mode = drop`         | remove children; do not include `children`                                                                        |
+| `child_policy.mode = remove_self`  | remove the current node from its parent; do not include `children`                                                |
 | `child_policy.mode = replace_with` | include ordered `children` list of direct child IDs                                                               |
+| `repeat_element_ids` (optional)    | override repeat metadata for the current node; IDs must be unique and ordered                                     |
 
 ## Minimal Example
 
@@ -108,6 +112,7 @@ Rules:
       "node_id": "1:10",
       "suggested_type": "Button",
       "child_policy": { "mode": "drop" },
+      "repeat_element_ids": ["btn:1", "btn:2"],
       "confidence": 0.82,
       "reason": "Container is action-like with label/icon composition"
     }

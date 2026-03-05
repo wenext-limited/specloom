@@ -33,7 +33,8 @@ Important policy:
 
 1. `transform_plan.json` is authoritative for high-level node typing and child handling.
 2. Do not apply deterministic semantic collapse rules after AI transform output.
-3. Agent decides whether children are kept/dropped/replaced through `child_policy`.
+3. Agent decides whether children are kept/dropped/replaced or the node is removed through `child_policy`.
+4. Agent may set decision-level `repeat_element_ids` to override repeat metadata on the current node.
 
 ## Tooling Contract
 
@@ -80,8 +81,10 @@ Goal: produce/update `transform_plan.json` from pre-layout + raw node map.
 4. Decide `child_policy` per node.
 5. `keep` for container-like nodes.
 6. `drop` for element-like nodes.
-7. `replace_with` for curated child sets.
-8. Write `output/specs/transform_plan.json`.
+7. `remove_self` when the current node should be deleted from its parent.
+8. `replace_with` for curated child sets.
+9. Infer and set `repeat_element_ids` when repeated-instance structure is clear for the current node.
+10. Write `output/specs/transform_plan.json`.
 
 ### Phase B: Rebuild Final Spec
 

@@ -149,6 +149,7 @@ fn transform_plan_round_trip_json() {
                 mode: ChildPolicyMode::Drop,
                 children: Vec::new(),
             },
+            repeat_element_ids: None,
             confidence: 0.82,
             reason: "Action control".to_string(),
         }],
@@ -184,6 +185,7 @@ fn transform_plan_validate_rejects_missing_node_id() {
                 mode: ChildPolicyMode::Keep,
                 children: Vec::new(),
             },
+            repeat_element_ids: None,
             confidence: 0.6,
             reason: "Not present".to_string(),
         }],
@@ -235,6 +237,7 @@ fn transform_plan_validate_rejects_replace_with_unknown_child() {
                 mode: ChildPolicyMode::ReplaceWith,
                 children: vec!["9:9".to_string()],
             },
+            repeat_element_ids: None,
             confidence: 0.71,
             reason: "Force children".to_string(),
         }],
@@ -275,6 +278,7 @@ fn transform_plan_validate_rejects_non_replace_mode_with_children() {
                 mode: ChildPolicyMode::Keep,
                 children: vec!["1:2".to_string()],
             },
+            repeat_element_ids: None,
             confidence: 0.65,
             reason: "Invalid with keep".to_string(),
         }],
@@ -288,6 +292,153 @@ fn transform_plan_validate_rejects_non_replace_mode_with_children() {
         TransformPlanValidationError::UnexpectedChildrenForMode {
             node_id: "1:1".to_string(),
             mode: ChildPolicyMode::Keep,
+        }
+    );
+}
+
+#[test]
+fn transform_plan_validate_rejects_remove_self_for_root_node() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Text {
+            id: "1:2".to_string(),
+            name: "Label".to_string(),
+            children: Vec::new(),
+            repeat_element_ids: Vec::new(),
+        }],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:1".to_string(),
+            suggested_type: SuggestedNodeType::Container,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::RemoveSelf,
+                children: Vec::new(),
+            },
+            repeat_element_ids: None,
+            confidence: 0.75,
+            reason: "Invalid: root must remain".to_string(),
+        }],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::RemoveSelfNotAllowedForRoot("1:1".to_string())
+    );
+}
+
+#[test]
+fn transform_plan_validate_rejects_replace_with_child_marked_remove_self() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "Row".to_string(),
+            text: String::new(),
+            children: vec![
+                UiSpec::Text {
+                    id: "1:3".to_string(),
+                    name: "A".to_string(),
+                    children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
+                },
+                UiSpec::Text {
+                    id: "1:4".to_string(),
+                    name: "B".to_string(),
+                    children: Vec::new(),
+                    repeat_element_ids: Vec::new(),
+                },
+            ],
+            repeat_element_ids: Vec::new(),
+        }],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![
+            TransformDecision {
+                node_id: "1:2".to_string(),
+                suggested_type: SuggestedNodeType::HStack,
+                child_policy: ChildPolicy {
+                    mode: ChildPolicyMode::ReplaceWith,
+                    children: vec!["1:3".to_string()],
+                },
+                repeat_element_ids: None,
+                confidence: 0.8,
+                reason: "Keep one child".to_string(),
+            },
+            TransformDecision {
+                node_id: "1:3".to_string(),
+                suggested_type: SuggestedNodeType::Text,
+                child_policy: ChildPolicy {
+                    mode: ChildPolicyMode::RemoveSelf,
+                    children: Vec::new(),
+                },
+                repeat_element_ids: None,
+                confidence: 0.79,
+                reason: "Drop repeated node instance".to_string(),
+            },
+        ],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::ReplacementChildRemovedByDecision {
+            node_id: "1:2".to_string(),
+            child_id: "1:3".to_string(),
+        }
+    );
+}
+
+#[test]
+fn transform_plan_validate_rejects_duplicate_repeat_element_ids() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Text {
+            id: "1:2".to_string(),
+            name: "Label".to_string(),
+            children: Vec::new(),
+            repeat_element_ids: Vec::new(),
+        }],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::Text,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            repeat_element_ids: Some(vec!["r1".to_string(), "r1".to_string()]),
+            confidence: 0.7,
+            reason: "Invalid duplicate repeat ids".to_string(),
+        }],
+    };
+
+    let err = plan
+        .validate_against_pre_layout(&pre_layout)
+        .expect_err("validation should fail");
+    assert_eq!(
+        err,
+        TransformPlanValidationError::DuplicateRepeatElementId {
+            node_id: "1:2".to_string(),
+            repeat_id: "r1".to_string(),
         }
     );
 }
@@ -321,6 +472,7 @@ fn apply_transform_plan_drop_removes_children_and_sets_button_type() {
                 mode: ChildPolicyMode::Drop,
                 children: Vec::new(),
             },
+            repeat_element_ids: None,
             confidence: 0.9,
             reason: "Leaf control".to_string(),
         }],
@@ -330,6 +482,48 @@ fn apply_transform_plan_drop_removes_children_and_sets_button_type() {
     let button = &transformed.children()[0];
     assert_eq!(button.node_type(), NodeType::Button);
     assert!(button.children().is_empty());
+}
+
+#[test]
+fn apply_transform_plan_remove_self_drops_node_from_parent_children() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![
+            UiSpec::Text {
+                id: "1:2".to_string(),
+                name: "Repeated Row".to_string(),
+                children: Vec::new(),
+                repeat_element_ids: vec!["row-a".to_string(), "row-b".to_string()],
+            },
+            UiSpec::Text {
+                id: "1:3".to_string(),
+                name: "Keep Me".to_string(),
+                children: Vec::new(),
+                repeat_element_ids: Vec::new(),
+            },
+        ],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::Text,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::RemoveSelf,
+                children: Vec::new(),
+            },
+            repeat_element_ids: None,
+            confidence: 0.86,
+            reason: "Remove repeated node".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    assert_eq!(transformed.children().len(), 1);
+    assert_eq!(transformed.children()[0].id(), "1:3");
 }
 
 #[test]
@@ -369,6 +563,7 @@ fn apply_transform_plan_keep_preserves_children_and_sets_hstack_type() {
                 mode: ChildPolicyMode::Keep,
                 children: Vec::new(),
             },
+            repeat_element_ids: None,
             confidence: 0.78,
             reason: "Horizontal alignment".to_string(),
         }],
@@ -419,6 +614,7 @@ fn apply_transform_plan_replace_with_rewires_children_order() {
                 mode: ChildPolicyMode::ReplaceWith,
                 children: vec!["1:4".to_string()],
             },
+            repeat_element_ids: None,
             confidence: 0.74,
             reason: "Content subset".to_string(),
         }],
@@ -455,6 +651,7 @@ fn apply_transform_plan_preserves_repeat_element_ids_when_type_changes() {
                 mode: ChildPolicyMode::Keep,
                 children: Vec::new(),
             },
+            repeat_element_ids: None,
             confidence: 0.84,
             reason: "Treat card as vertical stack".to_string(),
         }],
@@ -466,6 +663,45 @@ fn apply_transform_plan_preserves_repeat_element_ids_when_type_changes() {
     assert_eq!(
         card.repeat_element_ids(),
         &["card:1".to_string(), "card:2".to_string()]
+    );
+}
+
+#[test]
+fn apply_transform_plan_overrides_repeat_element_ids_when_decision_provides_them() {
+    let pre_layout = UiSpec::Container {
+        id: "1:1".to_string(),
+        name: "Root".to_string(),
+        text: String::new(),
+        children: vec![UiSpec::Container {
+            id: "1:2".to_string(),
+            name: "Card".to_string(),
+            text: String::new(),
+            children: Vec::new(),
+            repeat_element_ids: vec!["card:old".to_string()],
+        }],
+        repeat_element_ids: Vec::new(),
+    };
+    let plan = TransformPlan {
+        version: TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![TransformDecision {
+            node_id: "1:2".to_string(),
+            suggested_type: SuggestedNodeType::VStack,
+            child_policy: ChildPolicy {
+                mode: ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            repeat_element_ids: Some(vec!["card:new-1".to_string(), "card:new-2".to_string()]),
+            confidence: 0.88,
+            reason: "Override repeats from transform decision".to_string(),
+        }],
+    };
+
+    let transformed = apply_transform_plan(&pre_layout, &plan).expect("transform should succeed");
+    let card = &transformed.children()[0];
+    assert_eq!(card.node_type(), NodeType::VStack);
+    assert_eq!(
+        card.repeat_element_ids(),
+        &["card:new-1".to_string(), "card:new-2".to_string()]
     );
 }
 

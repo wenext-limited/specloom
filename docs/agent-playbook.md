@@ -26,7 +26,10 @@ This playbook defines how generation agents should use repository tooling in v1.
 1. `suggested_type` defines the target node kind (`Button`, `ScrollView`, `HStack`, etc.).
 2. `child_policy.mode=keep` preserves transformed children.
 3. `child_policy.mode=drop` removes all children.
-4. `child_policy.mode=replace_with` keeps only listed child IDs (ordered list).
+4. `child_policy.mode=remove_self` removes the current node from its parent.
+5. `child_policy.mode=replace_with` keeps only listed child IDs (ordered list).
+6. `repeat_element_ids` (optional on each decision) overrides repeat metadata for that node in final `ui_spec.ron`.
+7. `repeat_element_ids` means repeating the current node itself, not selecting child nodes.
 
 Do not apply additional deterministic semantic collapse rules after transform-plan application.
 
