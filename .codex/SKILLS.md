@@ -1,6 +1,6 @@
 # Project Skills Guide
 
-This file defines the project-local skills and how agents should use them.
+This file defines project-local skills and recommended usage order.
 
 ## Active Skills
 
@@ -10,40 +10,50 @@ Use when deciding container layout strategy (`v_stack`, `h_stack`, `overlay`, `a
 
 2. `generating-ui-spec-ron`
 Path: `.codex/skills/generating-ui-spec-ron/SKILL.md`
-Use when producing final `output/specs/ui_spec.ron` from `pre_layout.ron`, `node_map.json`, and screenshot grounding through `transform_plan.json`.
+Use when orchestrating pre-layout artifacts into final `output/specs/ui_spec.ron`.
 
-3. `generating-ui-from-ui-spec-ron`
+3. `node-grounding-for-transform`
+Path: `.codex/skills/node-grounding-for-transform/SKILL.md`
+Use when transform decisions need authoritative node evidence.
+
+4. `authoring-transform-plan`
+Path: `.codex/skills/authoring-transform-plan/SKILL.md`
+Use when writing/validating `output/specs/transform_plan.json` decisions.
+
+5. `simplifying-system-components`
+Path: `.codex/skills/simplifying-system-components/SKILL.md`
+Use when system chrome should be flattened to concise semantic structure.
+
+6. `inferring-repeat-element-ids`
+Path: `.codex/skills/inferring-repeat-element-ids/SKILL.md`
+Use when deciding whether repeated-node metadata should be encoded.
+
+7. `generating-ui-from-ui-spec-ron`
 Path: `.codex/skills/generating-ui-from-ui-spec-ron/SKILL.md`
-Use when `ui_spec.ron` is ready and the agent must generate UI code that matches the user-requested target and constraints.
+Use when final `ui_spec.ron` exists and target UI code must be generated.
 
-4. `planning-implementation-work`
+8. `planning-implementation-work`
 Path: `.codex/skills/planning-implementation-work/SKILL.md`
-Use when converting approved scope into a phased implementation plan with dependencies, verification gates, and commit boundaries.
+Use when converting approved scope into a phased implementation plan.
 
-5. `parallel-phase-workflow`
+9. `parallel-phase-workflow`
 Path: `.codex/skills/parallel-phase-workflow/SKILL.md`
-Use when executing or maintaining phase boards with `[ ]`, `[~]`, `[x]` status and merge-to-main transitions.
+Use when executing or maintaining dependency-aware phase boards.
 
 ## Usage Order
 
-1. Run `recognizing-layout` first when layout decisions are needed.
-2. Run `generating-ui-spec-ron` when converting pre-layout artifacts into final `ui_spec.ron`.
-3. Run `generating-ui-from-ui-spec-ron` after `ui_spec.ron` exists and generation target is known.
-4. Run `planning-implementation-work` after scope is approved.
-5. Run `parallel-phase-workflow` while executing plan boards.
-
-## Prompt Patterns
-
-- `Use $recognizing-layout to classify layout for <node set> and output confidence + warnings.`
-- `Use $generating-ui-spec-ron to produce transform_plan.json and final ui_spec.ron from pre_layout.ron + node_map.json + screenshot.`
-- `Use $generating-ui-from-ui-spec-ron to generate UI code from ui_spec.ron in the exact target requested by the user.`
-- `Use $planning-implementation-work to produce a phased plan and boards for <approved scope>.`
-- `Use $parallel-phase-workflow to execute the active board and update task status with verification evidence.`
+1. Run `recognizing-layout` when layout decisions are needed.
+2. Run `generating-ui-spec-ron` for pre-layout -> final spec orchestration.
+3. Inside that flow, use:
+   - `node-grounding-for-transform`
+   - `simplifying-system-components` (if needed)
+   - `inferring-repeat-element-ids` (if needed)
+   - `authoring-transform-plan`
+4. Run `generating-ui-from-ui-spec-ron` after final spec exists.
+5. Use planning/phase skills for implementation execution.
 
 ## Rules
 
-1. Do not mix layout inference and implementation planning in one skill.
-2. Keep warnings explicit for low-confidence or unsupported cases.
-3. Never shortcut `ui_spec.ron` by copying `pre_layout.ron`; always apply `transform_plan.json` through `build-spec`.
-4. Every planned task must include a verification command.
-5. Infer `repeat_element_ids` during `generating-ui-spec-ron` when repeated-element structure is clear; otherwise leave it absent/empty.
+1. Never shortcut `ui_spec.ron` by copying `pre_layout.ron`.
+2. Always apply transform decisions through `build-spec`.
+3. Keep uncertainty explicit; do not hide low-confidence decisions.
