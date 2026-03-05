@@ -19,7 +19,7 @@ Use this with the current run-and-consume CLI workflow in this repository.
 
 ## Authoritative Inputs
 
-Before generation, deterministic stages should produce:
+Before `generate-ui`, deterministic + bundle steps should produce:
 
 1. `output/specs/pre_layout.ron`
 2. `output/specs/node_map.json`
@@ -28,6 +28,7 @@ Before generation, deterministic stages should produce:
 5. `output/agent/agent_context.json`
 6. `output/agent/search_index.json`
 7. `output/images/root_<node_id>.png` (for live runs)
+8. `output/agent/llm_bundle.json`
 
 Important policy:
 
@@ -109,7 +110,7 @@ Goal: produce target UI code using tool-assisted node grounding.
 
 Every generation run should produce:
 
-1. Generated UI files for chosen target.
+1. Generated UI files for chosen target under `output/generated/<target>/...`.
 2. `output/reports/generation_warnings.json`
 3. `output/reports/generation_trace.json`
 
@@ -125,23 +126,18 @@ Do not claim success without all three output classes.
 
 ## Minimal Operator Flow
 
-Live example:
-
 ```bash
 export FIGMA_TOKEN="<YOUR_TOKEN>"
 
-# deterministic bootstrap
-specloom fetch --input live --figma-url "<FIGMA_URL>"
-specloom run-stage normalize
-specloom run-stage build-spec
+# 1) Deterministic pipeline (choose fixture or live)
+specloom generate --input fixture
+specloom generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>"
 
-# agent writes output/specs/transform_plan.json (Phase A)
+# 2) Build output/agent/llm_bundle.json
+specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE_NAME>?node-id=<NODE_ID>" --target react-tailwind --intent "Generate login screen code"
 
-# apply transform + refresh agent context
-specloom run-stage build-spec
-specloom run-stage build-agent-context
-
-# agent performs codegen using agent-tool commands (Phase C)
+# 3) Generate target UI code
+specloom generate-ui --bundle output/agent/llm_bundle.json
 ```
 
 ## Guardrails

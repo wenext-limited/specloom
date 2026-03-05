@@ -241,6 +241,150 @@ fn run_stage_build_agent_context_writes_agent_artifacts() {
 }
 
 #[test]
+fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
+    let workspace_root =
+        unique_test_workspace_root("prepare_llm_bundle_in_workspace_writes_bundle_artifact");
+
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let result = prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    assert_eq!(result, "output/agent/llm_bundle.json");
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    assert!(bundle_path.is_file());
+
+    let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    assert_eq!(bundle.version, LLM_BUNDLE_VERSION);
+    assert_eq!(bundle.request.target, "react-tailwind");
+    assert_eq!(
+        bundle.request.intent,
+        "Generate production-ready login screen"
+    );
+    assert_eq!(
+        bundle.figma.source_url,
+        "https://www.figma.com/design/abc/Login?node-id=1-2"
+    );
+    assert_eq!(bundle.figma.file_key, "fixture-file-key");
+    assert_eq!(bundle.figma.root_node_id, "0:1");
+    assert_eq!(bundle.artifacts.ui_spec.path, "output/specs/ui_spec.ron");
+    assert!(!bundle.artifacts.ui_spec.sha256.is_empty());
+    assert!(!bundle.instructions.skills_guide_markdown.is_empty());
+    assert!(!bundle.instructions.agent_playbook_markdown.is_empty());
+    assert!(!bundle.instructions.figma_ui_coder_markdown.is_empty());
+    assert!(!bundle.instructions.skill_docs.is_empty());
+    assert_eq!(
+        bundle
+            .tool_contract
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "find_nodes",
+            "get_node_info",
+            "get_node_screenshot",
+            "get_asset",
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn generate_ui_with_mock_runner_writes_generated_output() {
+    let workspace_root =
+        unique_test_workspace_root("generate_ui_with_mock_runner_writes_generated_output");
+
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    let result = generate_ui_in_workspace(
+        workspace_root.as_path(),
+        &GenerateUiRequest {
+            bundle_path: "output/agent/llm_bundle.json".to_string(),
+        },
+        &MockAgentRunner::default(),
+    )
+    .expect("generate ui should succeed");
+
+    assert!(
+        result
+            .generated_paths
+            .iter()
+            .any(|path| path.starts_with("output/generated/"))
+    );
+    assert!(
+        workspace_root
+            .join("output/generated/react-tailwind/App.tsx")
+            .is_file()
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn generate_ui_in_workspace_always_emits_warning_and_trace_artifacts() {
+    let workspace_root = unique_test_workspace_root(
+        "generate_ui_in_workspace_always_emits_warning_and_trace_artifacts",
+    );
+
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    generate_ui_in_workspace(
+        workspace_root.as_path(),
+        &GenerateUiRequest {
+            bundle_path: "output/agent/llm_bundle.json".to_string(),
+        },
+        &MockAgentRunner::default(),
+    )
+    .expect("generation should succeed");
+
+    assert!(
+        workspace_root
+            .join("output/reports/generation_warnings.json")
+            .is_file()
+    );
+    assert!(
+        workspace_root
+            .join("output/reports/generation_trace.json")
+            .is_file()
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn build_agent_context_uses_transformed_final_spec() {
     let workspace_root =
         unique_test_workspace_root("build_agent_context_uses_transformed_final_spec");
@@ -527,4 +671,70 @@ fn unique_test_workspace_root(test_name: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace root should be created");
     path
+}
+
+fn seed_full_fixture_pipeline(workspace_root: &std::path::Path) {
+    run_stage_in_workspace("fetch", workspace_root).expect("fetch should run first");
+    run_stage_in_workspace("normalize", workspace_root).expect("normalize should run second");
+    run_stage_in_workspace("build-spec", workspace_root).expect("build-spec should run third");
+    run_stage_in_workspace("build-agent-context", workspace_root)
+        .expect("build-agent-context should run fourth");
+    run_stage_in_workspace("export-assets", workspace_root)
+        .expect("export-assets should run fifth");
+}
+
+fn seed_bundle_instruction_sources(workspace_root: &std::path::Path) {
+    let skills_guide_path = workspace_root.join(".codex/SKILLS.md");
+    if let Some(parent) = skills_guide_path.parent() {
+        std::fs::create_dir_all(parent).expect("skills guide parent should be creatable");
+    }
+    std::fs::write(
+        skills_guide_path.as_path(),
+        r#"# Project Skills Guide
+
+## Active Skills
+
+1. `recognizing-layout`
+Path: `.codex/skills/recognizing-layout/SKILL.md`
+Use layout guidance.
+
+2. `authoring-transform-plan`
+Path: `.codex/skills/authoring-transform-plan/SKILL.md`
+Use transform plan guidance.
+
+## Usage Order
+1. Example only
+"#,
+    )
+    .expect("skills guide should be writable");
+
+    let recognizing_layout_path = workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
+    if let Some(parent) = recognizing_layout_path.parent() {
+        std::fs::create_dir_all(parent).expect("recognizing-layout parent should be creatable");
+    }
+    std::fs::write(recognizing_layout_path.as_path(), "# recognizing layout")
+        .expect("recognizing-layout skill should be writable");
+
+    let authoring_transform_path =
+        workspace_root.join(".codex/skills/authoring-transform-plan/SKILL.md");
+    if let Some(parent) = authoring_transform_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("authoring-transform-plan parent should be creatable");
+    }
+    std::fs::write(
+        authoring_transform_path.as_path(),
+        "# authoring transform plan",
+    )
+    .expect("authoring-transform-plan skill should be writable");
+
+    let playbook_path = workspace_root.join("docs/agent-playbook.md");
+    if let Some(parent) = playbook_path.parent() {
+        std::fs::create_dir_all(parent).expect("playbook parent should be creatable");
+    }
+    std::fs::write(playbook_path.as_path(), "# agent playbook")
+        .expect("agent playbook should be writable");
+
+    let figma_ui_coder_path = workspace_root.join("docs/figma-ui-coder.md");
+    std::fs::write(figma_ui_coder_path.as_path(), "# figma ui coder")
+        .expect("figma ui coder doc should be writable");
 }

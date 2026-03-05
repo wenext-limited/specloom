@@ -10,6 +10,7 @@ cargo test -p specloom-core agent_context_round_trip_json
 
 # End-to-end CLI generate smoke and determinism checks.
 cargo test -p specloom-cli --test e2e_generate
+cargo test -p specloom-cli --test e2e_agent_workflow
 
 cargo fmt --all --check
 cargo check --workspace

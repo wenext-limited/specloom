@@ -237,3 +237,59 @@ pub fn start_single_binary_response_server(
 
     Ok((format!("http://{address}"), server_thread))
 }
+
+pub fn seed_bundle_instruction_sources(workspace_root: &std::path::Path) {
+    let skills_guide_path = workspace_root.join(".codex/SKILLS.md");
+    if let Some(parent) = skills_guide_path.parent() {
+        std::fs::create_dir_all(parent).expect("skills guide parent should be creatable");
+    }
+    std::fs::write(
+        skills_guide_path.as_path(),
+        r#"# Project Skills Guide
+
+## Active Skills
+
+1. `recognizing-layout`
+Path: `.codex/skills/recognizing-layout/SKILL.md`
+Use layout guidance.
+
+2. `authoring-transform-plan`
+Path: `.codex/skills/authoring-transform-plan/SKILL.md`
+Use transform plan guidance.
+
+## Usage Order
+1. Example only
+"#,
+    )
+    .expect("skills guide should be writable");
+
+    let recognizing_layout_path = workspace_root.join(".codex/skills/recognizing-layout/SKILL.md");
+    if let Some(parent) = recognizing_layout_path.parent() {
+        std::fs::create_dir_all(parent).expect("recognizing-layout parent should be creatable");
+    }
+    std::fs::write(recognizing_layout_path.as_path(), "# recognizing layout")
+        .expect("recognizing-layout skill should be writable");
+
+    let authoring_transform_path =
+        workspace_root.join(".codex/skills/authoring-transform-plan/SKILL.md");
+    if let Some(parent) = authoring_transform_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("authoring-transform-plan parent should be creatable");
+    }
+    std::fs::write(
+        authoring_transform_path.as_path(),
+        "# authoring transform plan",
+    )
+    .expect("authoring-transform-plan skill should be writable");
+
+    let playbook_path = workspace_root.join("docs/agent-playbook.md");
+    if let Some(parent) = playbook_path.parent() {
+        std::fs::create_dir_all(parent).expect("playbook parent should be creatable");
+    }
+    std::fs::write(playbook_path.as_path(), "# agent playbook")
+        .expect("agent playbook should be writable");
+
+    let figma_ui_coder_path = workspace_root.join("docs/figma-ui-coder.md");
+    std::fs::write(figma_ui_coder_path.as_path(), "# figma ui coder")
+        .expect("figma ui coder doc should be writable");
+}
