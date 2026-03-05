@@ -29,6 +29,16 @@ macro_rules! define_ui_spec_enum {
                 },
             )+
         }
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum NodeType {
+            $(
+                $container_variant,
+            )+
+            $(
+                $leaf_variant,
+            )+
+        }
     };
 }
 
@@ -108,19 +118,4 @@ impl UiSpec {
             Self::ZStack { .. } => NodeType::ZStack,
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeType {
-    Container,
-    Instance,
-    Text,
-    Image,
-    Shape,
-    Vector,
-    Button,
-    ScrollView,
-    HStack,
-    VStack,
-    ZStack,
 }
