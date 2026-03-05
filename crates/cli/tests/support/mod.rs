@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::io::{Read, Write};
 
 pub fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
@@ -11,6 +13,74 @@ pub fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace should be created");
     path
+}
+
+pub fn specloom_binary_path() -> std::path::PathBuf {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_specloom")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_file())
+    {
+        return path;
+    }
+
+    let compiled_path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_specloom"));
+    if compiled_path.is_file() {
+        return compiled_path;
+    }
+
+    let mut derived = std::env::current_exe().expect("current test executable path should resolve");
+    derived.pop();
+    if derived.ends_with("deps") {
+        derived.pop();
+    }
+    derived.push(format!("specloom{}", std::env::consts::EXE_SUFFIX));
+    if derived.is_file() {
+        return derived;
+    }
+
+    panic!(
+        "failed to locate specloom binary: runtime env={:?}, compile-time={}, derived={}",
+        std::env::var_os("CARGO_BIN_EXE_specloom"),
+        env!("CARGO_BIN_EXE_specloom"),
+        derived.display()
+    );
+}
+
+pub fn specloom_command() -> std::process::Command {
+    std::process::Command::new(specloom_binary_path())
+}
+
+pub fn cli_fixture_path(relative_path: &str) -> std::path::PathBuf {
+    let relative_path = std::path::Path::new(relative_path);
+    let mut candidates = Vec::new();
+
+    if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR").map(std::path::PathBuf::from)
+    {
+        candidates.push(manifest_dir.join(relative_path));
+    }
+
+    candidates.push(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative_path));
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.join("crates/cli").join(relative_path));
+        candidates.push(current_dir.join(relative_path));
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        for ancestor in current_exe.ancestors() {
+            candidates.push(ancestor.join("crates/cli").join(relative_path));
+            candidates.push(ancestor.join(relative_path));
+        }
+    }
+
+    if let Some(path) = candidates.into_iter().find(|candidate| candidate.is_file()) {
+        return path;
+    }
+
+    panic!(
+        "failed to locate fixture path {} via CARGO_MANIFEST_DIR/current_dir/current_exe fallbacks",
+        relative_path.display()
+    );
 }
 
 pub fn start_live_api_server(
