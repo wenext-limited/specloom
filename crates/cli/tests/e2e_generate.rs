@@ -46,7 +46,7 @@ fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
         .expect("system clock should be after unix epoch")
         .as_nanos();
     let path = std::env::temp_dir().join(format!(
-        "forge-cli-e2e-{test_name}-{}-{timestamp_nanos}",
+        "specloom-cli-e2e-{test_name}-{}-{timestamp_nanos}",
         std::process::id()
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace should be created");
@@ -63,7 +63,7 @@ fn expected_generate_json_fixture() -> serde_json::Value {
 }
 
 fn run_generate_json(workspace_root: &std::path::Path) -> serde_json::Value {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root)
         .args(["generate", "--input", "fixture", "--output", "json"])
         .output()

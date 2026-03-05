@@ -31,17 +31,17 @@ impl PipelineError {
     pub fn actionable_message(&self) -> String {
         match self {
             Self::UnknownStage(stage) => format!(
-                "unknown stage: {stage}. Valid stages: {}. Run `forge stages` to list stage output directories.",
+                "unknown stage: {stage}. Valid stages: {}. Run `specloom stages` to list stage output directories.",
                 pipeline_stage_names().join(", ")
             ),
             Self::MissingInputArtifact(artifact_path) => {
                 if let Some(stage_name) = producer_stage_for_artifact(artifact_path.as_str()) {
                     format!(
-                        "missing input artifact: {artifact_path}. Run `forge run-stage {stage_name}` first, or run `forge generate` to execute the full pipeline."
+                        "missing input artifact: {artifact_path}. Run `specloom run-stage {stage_name}` first, or run `specloom generate` to execute the full pipeline."
                     )
                 } else {
                     format!(
-                        "missing input artifact: {artifact_path}. Run `forge generate` to execute the full pipeline."
+                        "missing input artifact: {artifact_path}. Run `specloom generate` to execute the full pipeline."
                     )
                 }
             }

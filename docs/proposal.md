@@ -1,4 +1,4 @@
-# Proposal: Forge Deterministic Figma-to-Spec + Agent-Context Pipeline (Rust 2024)
+# Proposal: Specloom Deterministic Figma-to-Spec + Agent-Context Pipeline (Rust 2024)
 
 This proposal is the canonical project baseline as of **March 5, 2026**.
 It reflects what is implemented on `main` today and the immediate roadmap from the latest completed boards.
@@ -10,7 +10,7 @@ Modern design-to-code flows fail in two predictable ways:
 1. They pass too much raw design data into generation, which hurts reliability and traceability.
 2. They hide uncertainty, which makes failures hard to debug and hard to trust.
 
-Forge addresses this by splitting the flow into deterministic artifact stages, then exposing a small, explicit agent tooling surface.
+Specloom addresses this by splitting the flow into deterministic artifact stages, then exposing a small, explicit agent tooling surface.
 
 ## 2. Goals
 
@@ -177,8 +177,8 @@ Current known gap:
 
 ## 9. Crate Responsibilities (Current Workspace)
 
-1. `crates/cli` (`forge-figma-pipeline` package, `forge` binary): CLI command surface and output formatting.
-2. `crates/core` (`forge-figma-core` package): core contracts and stage execution runtime including fetch/screenshot client APIs, normalization, ui-spec transform logic, agent-context lookup, and asset manifest generation.
+1. `crates/cli` (`specloom-cli` package, `specloom` binary): CLI command surface and output formatting.
+2. `crates/core` (`specloom-core` package): core contracts and stage execution runtime including fetch/screenshot client APIs, normalization, ui-spec transform logic, agent-context lookup, and asset manifest generation.
 
 ## 10. Determinism and Safety Guarantees
 
@@ -192,12 +192,12 @@ Current known gap:
 ## 11. Operator Workflow (Canonical CLI Pattern)
 
 ```bash
-cargo run -p forge-figma-pipeline -- stages
-cargo run -p forge-figma-pipeline -- fetch --input fixture
-cargo run -p forge-figma-pipeline -- generate --input fixture
-cargo run -p forge-figma-pipeline -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>"
-cargo run -p forge-figma-pipeline -- agent-tool find-nodes --query "login button" --output json
-cargo run -p forge-figma-pipeline -- agent-tool get-node-info --node-id <NODE_ID>
+cargo run -p specloom-cli -- stages
+cargo run -p specloom-cli -- fetch --input fixture
+cargo run -p specloom-cli -- generate --input fixture
+cargo run -p specloom-cli -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>"
+cargo run -p specloom-cli -- agent-tool find-nodes --query "login button" --output json
+cargo run -p specloom-cli -- agent-tool get-node-info --node-id <NODE_ID>
 ```
 
 Defaults:

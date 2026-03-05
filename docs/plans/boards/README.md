@@ -30,17 +30,17 @@ The CLI supports stage inspection and execution with deterministic text or JSON 
 Examples:
 
 1. List all stages in text mode (default):
-   `cargo run -p forge-figma-pipeline -- stages`
+   `cargo run -p specloom-cli -- stages`
 2. List all stages in JSON mode:
-   `cargo run -p forge-figma-pipeline -- stages --output json`
+   `cargo run -p specloom-cli -- stages --output json`
 3. Run one stage in text mode (default):
-   `cargo run -p forge-figma-pipeline -- run-stage normalize`
+   `cargo run -p specloom-cli -- run-stage normalize`
 4. Run one stage in JSON mode:
-   `cargo run -p forge-figma-pipeline -- run-stage normalize --output json`
+   `cargo run -p specloom-cli -- run-stage normalize --output json`
 5. Run full pipeline in text mode (default):
-   `cargo run -p forge-figma-pipeline -- generate`
+   `cargo run -p specloom-cli -- generate`
 6. Run full pipeline in JSON mode:
-   `cargo run -p forge-figma-pipeline -- generate --output json`
+   `cargo run -p specloom-cli -- generate --output json`
 
 Unknown stage execution returns exit code `2` and an explicit error message.
 

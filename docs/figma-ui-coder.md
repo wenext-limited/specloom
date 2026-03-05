@@ -48,9 +48,9 @@ Use tools in this order:
 Recommended CLI calls:
 
 ```bash
-forge agent-tool find-nodes --query "welcome back" --output json
-forge agent-tool get-node-info --node-id 17044:23593 --output json
-forge agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id 17044:23593 --output json
+specloom agent-tool find-nodes --query "welcome back" --output json
+specloom agent-tool get-node-info --node-id 17044:23593 --output json
+specloom agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id 17044:23593 --output json
 ```
 
 ## Mismatch Policy (Required)
@@ -131,15 +131,15 @@ Live example:
 export FIGMA_TOKEN="<YOUR_TOKEN>"
 
 # deterministic bootstrap
-forge fetch --input live --figma-url "<FIGMA_URL>"
-forge run-stage normalize
-forge run-stage build-spec
+specloom fetch --input live --figma-url "<FIGMA_URL>"
+specloom run-stage normalize
+specloom run-stage build-spec
 
 # agent writes output/specs/transform_plan.json (Phase A)
 
 # apply transform + refresh agent context
-forge run-stage build-spec
-forge run-stage build-agent-context
+specloom run-stage build-spec
+specloom run-stage build-agent-context
 
 # agent performs codegen using agent-tool commands (Phase C)
 ```

@@ -6,7 +6,7 @@ use support::{
 
 #[test]
 fn help_lists_pipeline_subcommands() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .arg("--help")
         .output()
         .unwrap();
@@ -20,7 +20,7 @@ fn help_lists_pipeline_subcommands() {
 
 #[test]
 fn generate_subcommand_help_includes_stage_order() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["generate", "--help"])
         .output()
         .unwrap();
@@ -31,7 +31,7 @@ fn generate_subcommand_help_includes_stage_order() {
 
 #[test]
 fn fetch_subcommand_help_describes_input_flags() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["fetch", "--help"])
         .output()
         .unwrap();
@@ -43,7 +43,7 @@ fn fetch_subcommand_help_describes_input_flags() {
 
 #[test]
 fn agent_tool_get_node_screenshot_help_describes_requirements() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["agent-tool", "get-node-screenshot", "--help"])
         .output()
         .unwrap();
@@ -56,7 +56,7 @@ fn agent_tool_get_node_screenshot_help_describes_requirements() {
 
 #[test]
 fn fetch_subcommand_prints_stage_output_directory() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .arg("fetch")
         .output()
         .unwrap();
@@ -67,7 +67,7 @@ fn fetch_subcommand_prints_stage_output_directory() {
 
 #[test]
 fn fetch_subcommand_rejects_live_input_without_required_values() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["fetch", "--input", "live"])
         .env_remove("FIGMA_TOKEN")
         .output()
@@ -83,7 +83,7 @@ fn fetch_subcommand_rejects_live_input_without_required_values() {
 
 #[test]
 fn fetch_subcommand_rejects_snapshot_input_without_required_values() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["fetch", "--input", "snapshot"])
         .output()
         .unwrap();
@@ -121,7 +121,7 @@ fn fetch_subcommand_accepts_snapshot_input_with_snapshot_path() {
     )
     .unwrap();
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "fetch",
@@ -152,7 +152,7 @@ fn fetch_subcommand_accepts_snapshot_input_with_snapshot_path() {
 fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
     let workspace_root =
         unique_cli_workspace_root("fetch_subcommand_uses_figma_token_from_env_for_live_input");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "fetch",
@@ -182,7 +182,7 @@ fn fetch_subcommand_uses_figma_token_from_env_for_live_input() {
 fn fetch_subcommand_accepts_figma_quick_link_for_live_input() {
     let workspace_root =
         unique_cli_workspace_root("fetch_subcommand_accepts_figma_quick_link_for_live_input");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "fetch",
@@ -208,7 +208,7 @@ fn fetch_subcommand_accepts_figma_quick_link_for_live_input() {
 
 #[test]
 fn fetch_subcommand_rejects_invalid_figma_quick_link() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args([
             "fetch",
             "--input",
@@ -227,7 +227,7 @@ fn fetch_subcommand_rejects_invalid_figma_quick_link() {
 
 #[test]
 fn stages_subcommand_lists_all_stage_outputs() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .arg("stages")
         .output()
         .unwrap();
@@ -242,13 +242,13 @@ fn stages_subcommand_lists_all_stage_outputs() {
 
 #[test]
 fn run_stage_subcommand_runs_selected_stage() {
-    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "fetch"])
         .output()
         .unwrap();
     assert!(fetch_output.status.success());
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "normalize"])
         .output()
         .unwrap();
@@ -260,7 +260,7 @@ fn run_stage_subcommand_runs_selected_stage() {
 
 #[test]
 fn run_stage_subcommand_rejects_unknown_stage() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "not-a-stage"])
         .output()
         .unwrap();
@@ -270,12 +270,12 @@ fn run_stage_subcommand_rejects_unknown_stage() {
     assert!(stderr.contains("unknown stage"));
     assert!(stderr.contains("not-a-stage"));
     assert!(stderr.contains("Valid stages:"));
-    assert!(stderr.contains("Run `forge stages`"));
+    assert!(stderr.contains("Run `specloom stages`"));
 }
 
 #[test]
 fn stages_subcommand_supports_json_output_mode() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["stages", "--output", "json"])
         .output()
         .unwrap();
@@ -290,13 +290,13 @@ fn stages_subcommand_supports_json_output_mode() {
 
 #[test]
 fn run_stage_subcommand_supports_json_output_mode() {
-    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let fetch_output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "fetch"])
         .output()
         .unwrap();
     assert!(fetch_output.status.success());
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "normalize", "--output", "json"])
         .output()
         .unwrap();
@@ -311,7 +311,7 @@ fn run_stage_subcommand_supports_json_output_mode() {
 
 #[test]
 fn run_stage_subcommand_rejects_unknown_stage_in_json_mode() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["run-stage", "not-a-stage", "--output", "json"])
         .output()
         .unwrap();
@@ -327,7 +327,7 @@ fn run_stage_subcommand_rejects_unknown_stage_in_json_mode() {
 fn run_stage_subcommand_reports_missing_input_artifact_actionably() {
     let workspace_root =
         unique_cli_workspace_root("run_stage_subcommand_reports_missing_input_artifact");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["run-stage", "normalize"])
         .output()
@@ -337,7 +337,7 @@ fn run_stage_subcommand_reports_missing_input_artifact_actionably() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr.contains("missing input artifact"));
     assert!(stderr.contains("run-stage fetch"));
-    assert!(stderr.contains("forge generate"));
+    assert!(stderr.contains("specloom generate"));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
 }
@@ -346,7 +346,7 @@ fn run_stage_subcommand_reports_missing_input_artifact_actionably() {
 fn generate_subcommand_runs_full_pipeline() {
     let workspace_root = unique_cli_workspace_root("generate_subcommand_runs_full_pipeline");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture"])
         .output()
@@ -369,7 +369,7 @@ fn generate_subcommand_runs_full_pipeline() {
 
 #[test]
 fn generate_subcommand_rejects_live_input_without_required_values() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["generate", "--input", "live", "--file-key", "abc123"])
         .env_remove("FIGMA_TOKEN")
         .output()
@@ -384,7 +384,7 @@ fn generate_subcommand_rejects_live_input_without_required_values() {
 
 #[test]
 fn generate_subcommand_defaults_to_live_and_rejects_missing_values() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .arg("generate")
         .env_remove("FIGMA_TOKEN")
         .output()
@@ -425,7 +425,7 @@ fn generate_subcommand_accepts_snapshot_input_with_snapshot_path() {
     )
     .unwrap();
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "generate",
@@ -480,7 +480,7 @@ fn generate_subcommand_live_downloads_root_screenshot() {
         Err(err) => panic!("api server should bind: {err}"),
     };
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "generate",
@@ -521,7 +521,7 @@ fn generate_subcommand_live_downloads_root_screenshot() {
 
 #[test]
 fn generate_subcommand_rejects_live_input_without_required_values_in_json_mode() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .args(["generate", "--input", "live", "--output", "json"])
         .env_remove("FIGMA_TOKEN")
         .output()
@@ -539,7 +539,7 @@ fn generate_subcommand_rejects_live_input_without_required_values_in_json_mode()
 fn generate_subcommand_supports_json_output_mode() {
     let workspace_root = unique_cli_workspace_root("generate_subcommand_supports_json_output_mode");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture", "--output", "json"])
         .output()
@@ -561,7 +561,7 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
         unique_cli_workspace_root("generate_subcommand_returns_error_when_workspace_is_blocked");
     std::fs::write(workspace_root.join("output"), "blocked").unwrap();
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture"])
         .output()
@@ -583,14 +583,14 @@ fn generate_subcommand_returns_error_when_workspace_is_blocked() {
 fn agent_tool_find_nodes_json_mode_returns_candidates() {
     let workspace_root = unique_cli_workspace_root("agent_tool_find_nodes_json_mode");
 
-    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     assert!(generate.status.success());
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args([
             "agent-tool",
@@ -615,14 +615,14 @@ fn agent_tool_find_nodes_json_mode_returns_candidates() {
 fn agent_tool_get_node_info_reports_not_found_actionably() {
     let workspace_root = unique_cli_workspace_root("agent_tool_get_node_info_not_found");
 
-    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let generate = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["generate", "--input", "fixture"])
         .output()
         .unwrap();
     assert!(generate.status.success());
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_forge"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_specloom"))
         .current_dir(workspace_root.as_path())
         .args(["agent-tool", "get-node-info", "--node-id", "missing"])
         .output()

@@ -6,7 +6,7 @@ pub fn unique_cli_workspace_root(test_name: &str) -> std::path::PathBuf {
         .expect("system clock should be after unix epoch")
         .as_nanos();
     let path = std::env::temp_dir().join(format!(
-        "forge-cli-{test_name}-{}-{timestamp_nanos}",
+        "specloom-cli-{test_name}-{}-{timestamp_nanos}",
         std::process::id()
     ));
     std::fs::create_dir_all(path.as_path()).expect("workspace should be created");
