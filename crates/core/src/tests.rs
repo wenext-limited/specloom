@@ -299,6 +299,43 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
 }
 
 #[test]
+fn generate_ui_with_mock_runner_writes_generated_output() {
+    let workspace_root =
+        unique_test_workspace_root("generate_ui_with_mock_runner_writes_generated_output");
+
+    seed_full_fixture_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    let result = generate_ui_in_workspace(
+        workspace_root.as_path(),
+        &GenerateUiRequest {
+            bundle_path: "output/agent/llm_bundle.json".to_string(),
+        },
+        &MockAgentRunner::default(),
+    )
+    .expect("generate ui should succeed");
+
+    assert!(
+        result
+            .generated_paths
+            .iter()
+            .any(|path| path.starts_with("output/generated/"))
+    );
+    assert!(workspace_root.join("output/generated/react-tailwind/App.tsx").is_file());
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn build_agent_context_uses_transformed_final_spec() {
     let workspace_root =
         unique_test_workspace_root("build_agent_context_uses_transformed_final_spec");

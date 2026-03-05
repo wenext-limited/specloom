@@ -2,12 +2,16 @@
 
 use std::path::Path;
 
+mod agent_runner;
 mod agent_context;
 mod asset_pipeline;
 pub mod figma_client;
 mod hash;
 mod llm_bundle;
 mod ui_spec;
+pub use agent_runner::{
+    AgentGeneratedFile, AgentRunner, AgentRunnerOutput, AgentRunnerRequest, MockAgentRunner,
+};
 pub use llm_bundle::{
     BundleArtifactRef, BundleArtifacts, BundleFigmaContext, BundleInstructions, BundleRequest,
     BundleSkillDoc, BundleToolContract, BundleToolDefinition, LLM_BUNDLE_VERSION, LlmBundle,
@@ -340,6 +344,54 @@ pub fn prepare_llm_bundle_in_workspace(
     let bundle_bytes = serde_json::to_vec_pretty(&bundle).map_err(serialization_error)?;
     write_bytes(bundle_path.as_path(), bundle_bytes.as_slice())?;
     Ok(normalize_result_path(workspace_root, bundle_path.as_path()))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerateUiRequest {
+    pub bundle_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerateUiResult {
+    pub generated_paths: Vec<String>,
+}
+
+pub fn generate_ui(request: &GenerateUiRequest) -> Result<GenerateUiResult, PipelineError> {
+    let workspace_root = std::env::current_dir().map_err(io_error)?;
+    let runner = MockAgentRunner;
+    generate_ui_in_workspace(workspace_root.as_path(), request, &runner)
+}
+
+pub fn generate_ui_in_workspace(
+    workspace_root: &Path,
+    request: &GenerateUiRequest,
+    runner: &dyn AgentRunner,
+) -> Result<GenerateUiResult, PipelineError> {
+    if request.bundle_path.trim().is_empty() {
+        return Err(PipelineError::MissingInputArtifact(
+            LLM_BUNDLE_ARTIFACT_RELATIVE_PATH.to_string(),
+        ));
+    }
+
+    let bundle_path = resolve_workspace_path(workspace_root, request.bundle_path.as_str());
+    if !bundle_path.exists() {
+        return Err(PipelineError::MissingInputArtifact(
+            request.bundle_path.clone(),
+        ));
+    }
+
+    let bundle_text = std::fs::read_to_string(bundle_path.as_path()).map_err(io_error)?;
+    let bundle = serde_json::from_str::<LlmBundle>(bundle_text.as_str()).map_err(serialization_error)?;
+    let runner_output = runner.generate(&AgentRunnerRequest { bundle })?;
+
+    let mut generated_paths = Vec::with_capacity(runner_output.generated_files.len());
+    for generated_file in runner_output.generated_files {
+        let output_path = resolve_workspace_path(workspace_root, generated_file.relative_path.as_str());
+        write_bytes(output_path.as_path(), generated_file.contents.as_bytes())?;
+        generated_paths.push(normalize_result_path(workspace_root, output_path.as_path()));
+    }
+
+    Ok(GenerateUiResult { generated_paths })
 }
 
 pub fn find_nodes(query: &str, top_k: usize) -> Result<FindNodesResult, PipelineError> {
