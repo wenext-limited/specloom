@@ -1,61 +1,43 @@
-# Proposal: Figma Node Tree -> Spec + Agent Context Pipeline (Rust 2024)
+# Proposal: Forge Deterministic Figma-to-Spec + Agent-Context Pipeline (Rust 2024)
 
-For current command usage and artifact expectations, see the root [`README.md`](/Users/wendell/Developer/forge/README.md).
+This proposal is the canonical project baseline as of **March 5, 2026**.
+It reflects what is implemented on `main` today and the immediate roadmap from the latest completed boards.
 
-## 1. Objective
+## 1. Why This Project Exists
 
-This document reflects the **currently implemented** repository behavior (as of 2026-03-05), not the earlier aspirational SwiftUI/LLM architecture drafts.
+Modern design-to-code flows fail in two predictable ways:
 
-Primary objective:
+1. They pass too much raw design data into generation, which hurts reliability and traceability.
+2. They hide uncertainty, which makes failures hard to debug and hard to trust.
 
-1. Build a deterministic Rust pipeline that transforms Figma node data into stable intermediate artifacts for downstream UI generation workflows.
+Forge addresses this by splitting the flow into deterministic artifact stages, then exposing a small, explicit agent tooling surface.
 
-Current implemented outcomes:
+## 2. Goals
 
-1. Fetch raw Figma snapshot data (fixture, live API, or snapshot replay).
-2. Normalize snapshot JSON into a canonical node document.
-3. Build a pre-layout spec and a transformed UI spec.
-4. Build agent-facing context/search artifacts for deterministic lookup tooling.
-5. Build an asset manifest from normalized image fills.
+1. Convert Figma snapshots into stable, reviewable intermediate artifacts.
+2. Keep semantic decisions explicit through a versioned transform contract (`transform_plan.json`).
+3. Support agent-assisted lookup/generation with deterministic search + explicit warning/trace outputs.
+4. Preserve reproducibility across runs for identical inputs.
 
-Out of scope in the current implementation:
+## 3. Non-Goals (Current Mainline)
 
-1. Direct SwiftUI file generation as part of default pipeline stages.
-2. LLM bundle/generation stages (`prepare-llm-bundle`, `generate-ui`, etc.).
-3. A wired `review-report` stage in orchestrator default flow.
+1. Direct target UI generation as a default pipeline stage.
+2. Mandatory always-on daemon/session runtime.
+3. Silent fallback behavior when confidence is low or lookup fails.
+4. Reintroducing removed default stages (`infer-layout`, legacy SwiftUI codegen stages) into `generate`.
 
-## 2. Current End-to-End Architecture
+## 4. Current End-to-End Architecture
 
 ```text
-Figma fixture/live/snapshot input
-   │
-   ▼
-fetch
-  -> output/raw/fetch_snapshot.json
-   │
-   ▼
-normalize
-  -> output/normalized/normalized_document.json
-   │
-   ▼
-build-spec
-  -> output/specs/pre_layout.ron
-  -> output/specs/node_map.json
-  -> output/specs/transform_plan.json
-  -> output/specs/ui_spec.ron
-   │
-   ▼
-build-agent-context
-  -> output/agent/agent_context.json
-  -> output/agent/search_index.json
-  -> (live mode only) output/images/root_<node_id>.png
-   │
-   ▼
-export-assets
-  -> output/assets/asset_manifest.json
+input (fixture | live | snapshot)
+  -> fetch
+  -> normalize
+  -> build-spec
+  -> build-agent-context
+  -> export-assets
 ```
 
-Default `generate` stage order:
+Default `generate` order:
 
 1. `fetch`
 2. `normalize`
@@ -63,194 +45,193 @@ Default `generate` stage order:
 4. `build-agent-context`
 5. `export-assets`
 
-## 3. Workspace Shape (Current)
+## 5. Stage Contracts and Artifacts
 
-Current workspace members in [`Cargo.toml`](/Users/wendell/Developer/forge/Cargo.toml):
+### `fetch`
 
-1. `crates/cli` (package name: `forge`)
-2. `crates/figma_client`
-3. `crates/figma_normalizer`
-4. `crates/layout_infer`
-5. `crates/ui_spec`
-6. `crates/asset_pipeline`
-7. `crates/orchestrator`
-8. `crates/agent_context`
+Input modes:
 
-Current responsibility split:
+1. `fixture` (default for `fetch`)
+2. `live` (`--file-key` + `--node-id` or `--figma-url`, plus token)
+3. `snapshot` (`--snapshot-path`)
 
-1. `figma_client`: fixture + live Figma fetch and screenshot fetch contracts.
-2. `figma_normalizer`: canonical normalized document + warning surfacing + passthrough fields.
-3. `layout_infer`: deterministic layout inference contracts/heuristics (currently library-only, not stage-wired).
-4. `ui_spec`: pre-layout build, transform-plan validation, transformed `UiSpec` output.
-5. `agent_context`: context/search models and deterministic ranking logic.
-6. `asset_pipeline`: deterministic asset manifest extraction from normalized image fills.
-7. `orchestrator`: stage execution, artifact I/O, actionable errors, agent-tool operations.
-8. `cli` (`forge`): command parsing and text/json output interfaces.
+Output:
 
-## 4. Stage Contracts and Artifacts
+1. `output/raw/fetch_snapshot.json`
 
-### 4.1 `fetch`
+### `normalize`
+
+Input:
+
+1. `output/raw/fetch_snapshot.json`
+
+Output:
+
+1. `output/normalized/normalized_document.json`
+
+### `build-spec`
 
 Inputs:
 
-1. `fixture` mode (default for `fetch`).
-2. `live` mode (`--file-key` + `--node-id` or `--figma-url`, plus token via env/flag).
-3. `snapshot` mode (`--snapshot-path`).
+1. `output/normalized/normalized_document.json`
+2. Optional seeded `output/specs/transform_plan.json`
 
-Output:
-
-1. `output/raw/fetch_snapshot.json` (`snapshot_version = "1.0"`).
-
-### 4.2 `normalize`
-
-Input:
-
-1. `output/raw/fetch_snapshot.json`.
-
-Output:
-
-1. `output/normalized/normalized_document.json`.
-2. Includes deterministic node traversal output plus explicit normalization warnings.
-
-### 4.3 `build-spec`
-
-Input:
-
-1. `output/normalized/normalized_document.json`.
-
-Outputs:
+Outputs (in this order):
 
 1. `output/specs/pre_layout.ron`
-2. `output/specs/node_map.json` (`version = "node_map/1.0"`)
-3. `output/specs/transform_plan.json` (`version = "transform_plan/1.0"`)
+2. `output/specs/node_map.json`
+3. `output/specs/transform_plan.json`
 4. `output/specs/ui_spec.ron`
 
-Behavior notes:
+Behavior:
 
-1. If `output/specs/transform_plan.json` already exists, it is loaded and validated.
-2. Otherwise, default empty transform plan is used.
-3. Final `ui_spec.ron` is produced by applying the transform plan to pre-layout spec.
+1. `pre_layout.ron` is deterministically built from normalized nodes.
+2. `node_map.json` is emitted with stable key ordering (`BTreeMap`).
+3. If `transform_plan.json` exists, it is loaded + validated.
+4. If missing, an empty default transform plan is created.
+5. Final `ui_spec.ron` is produced only by applying the transform plan.
 
-### 4.4 `build-agent-context`
+Important current boundary:
+
+1. `build-spec` does **not** directly invoke an LLM in mainline code.
+2. Agent-driven plan authoring is currently an external/operator step that writes `transform_plan.json`.
+
+### `build-agent-context`
 
 Input:
 
-1. `output/specs/ui_spec.ron`.
+1. Final transformed `output/specs/ui_spec.ron`
 
 Outputs:
 
-1. `output/agent/agent_context.json` (`version = "agent_context/1.0"`).
-2. `output/agent/search_index.json` (`version = "search_index/1.0"`).
+1. `output/agent/agent_context.json`
+2. `output/agent/search_index.json`
+3. `output/images/root_<node_id>.png` (live mode, cached if already present)
 
-Additional behavior:
-
-1. In live mode, downloads root-node screenshot into `output/images/root_<node_id>.png` if not already present.
-
-### 4.5 `export-assets`
+### `export-assets`
 
 Input:
 
-1. `output/normalized/normalized_document.json`.
+1. `output/normalized/normalized_document.json`
 
 Output:
 
-1. `output/assets/asset_manifest.json` (`manifest_version = "1.0"`).
+1. `output/assets/asset_manifest.json`
 
-Behavior notes:
+## 6. Core Data Contracts (Current Versions)
 
-1. Extracts image-fill assets.
-2. Emits deterministic ordering and deterministic output filenames.
-3. Surfaces missing image refs as warnings in the manifest.
+1. Raw snapshot: `snapshot_version = "1.0"`
+2. Normalized document: `schema_version = "1.0"`
+3. Layout inference record (library): `decision_version = "1.0"`
+4. UI spec: `UI_SPEC_VERSION = "2.0"`
+5. Transform plan: `version = "transform_plan/1.0"`
+6. Node map: `version = "node_map/1.0"`
+7. Agent context: `version = "agent_context/1.0"`
+8. Search index: `version = "search_index/1.0"`
+9. Asset manifest: `manifest_version = "1.0"`
+10. Generation warnings: `version = "generation_warnings/1.0"`
+11. Generation trace: `version = "generation_trace/1.0"`
 
-## 5. Agent Tooling Surface (Current)
+## 7. Transform Plan Policy
 
-Implemented stateless tools under `forge agent-tool`:
+`transform_plan.json` is the semantic control surface for final `ui_spec.ron`.
 
-1. `find-nodes` (deterministic fuzzy ranking over `search_index.json`)
-2. `get-node-info` (node details lookup by ID)
-3. `get-node-screenshot` (live Figma images API call)
+Each decision includes:
 
-Tool side-effects:
+1. `node_id`
+2. `suggested_type` (`Container`, `Button`, `HStack`, etc.)
+3. `child_policy` (`keep`, `drop`, `remove_self`, `replace_with`)
+4. `confidence`
+5. `reason`
+6. Optional `repeat_element_ids`
 
-1. Appends warning records to `output/reports/generation_warnings.json` for no-match/low-confidence/ambiguous/not-found flows.
-2. Appends trace events to `output/reports/generation_trace.json`.
+Validation enforces:
 
-## 6. CLI Workflow (Current)
+1. Supported version.
+2. No duplicate decisions per node.
+3. Decision nodes and replacement children must exist.
+4. `replace_with` requires non-empty direct-child list.
+5. `remove_self` cannot target root.
+6. `replace_with` cannot reference a child that is also removed.
+7. `repeat_element_ids` must be unique when provided.
 
-Canonical examples (package name is `forge`):
+## 8. Agent Runtime Model (Current)
+
+Run-and-consume (stateless) is the default model.
+
+Implemented tool commands:
+
+1. `agent-tool find-nodes`
+2. `agent-tool get-node-info`
+3. `agent-tool get-node-screenshot`
+
+Lookup/report behavior:
+
+1. Deterministic fuzzy ranking with stable tie-break (`score desc`, `node_id asc`).
+2. Low-confidence/ambiguous/no-match cases append warnings to `output/reports/generation_warnings.json`.
+3. Tool usage appends events to `output/reports/generation_trace.json`.
+
+Current known gap:
+
+1. `get_asset` appears in context metadata but is not yet exposed as a CLI agent tool command.
+
+## 9. Crate Responsibilities (Current Workspace)
+
+1. `crates/cli` (`forge` package): CLI command surface and output formatting.
+2. `crates/figma_client`: fixture/live/snapshot fetch + screenshot API client contracts.
+3. `crates/figma_normalizer`: canonical normalization with explicit warnings and passthrough fields.
+4. `crates/layout_infer`: deterministic layout inference library (not in default orchestration).
+5. `crates/ui_spec`: pre-layout build + transform-plan validation/application + final spec emission.
+6. `crates/agent_context`: search contracts, token normalization, deterministic ranking.
+7. `crates/asset_pipeline`: deterministic image-fill manifest generation.
+8. `crates/orchestrator`: stage execution, artifact IO, error shaping, and tool wrappers.
+
+## 10. Determinism and Safety Guarantees
+
+1. Stable stage order and explicit artifact paths.
+2. Stable serialization and ordering in key contracts.
+3. Explicit actionable errors for unknown stage, missing artifacts, and fetch/config issues.
+4. No silent fallback for required upstream artifacts.
+5. Live mode requires explicit credentials (`FIGMA_TOKEN` or `--figma-token`).
+6. Figma URL parsing validates host and required `node-id`.
+
+## 11. Operator Workflow (Canonical CLI Pattern)
 
 ```bash
 cargo run -p forge -- stages
 cargo run -p forge -- fetch --input fixture
-cargo run -p forge -- fetch --input live --file-key <FILE_KEY> --node-id <NODE_ID>
-cargo run -p forge -- fetch --input snapshot --snapshot-path <PATH>
 cargo run -p forge -- generate --input fixture
 cargo run -p forge -- generate --input live --figma-url "https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>"
 cargo run -p forge -- agent-tool find-nodes --query "login button" --output json
 cargo run -p forge -- agent-tool get-node-info --node-id <NODE_ID>
 ```
 
-Input defaults:
+Defaults:
 
 1. `fetch` defaults to `--input fixture`.
 2. `generate` defaults to `--input live`.
 
-Output modes:
+## 12. Documentation Drift Note
 
-1. `text` (default)
-2. `json`
+Several historical plans/boards describe earlier architectures that are no longer the active mainline (for example `infer-layout` in default run order, SwiftUI AST/codegen crates, or `llm_*` stage wiring).
 
-## 7. Determinism and Safety Constraints
+For implementation reality, treat these as canonical first:
 
-Current deterministic guarantees implemented in code/tests:
+1. `docs/proposal.md` (this document)
+2. `README.md` (command/operator usage)
+3. `docs/agent-playbook.md` (tooling and reporting policy)
+4. Phase 13/14 boards under `docs/plans/boards/2026-03-05-*`
+5. `.codex/SKILLS.md` and skill docs under `.codex/skills/`
 
-1. Stable stage ordering and explicit artifact paths.
-2. Stable serialization for core contracts (JSON and RON snapshots in tests).
-3. Deterministic sorting in search ranking tie-breaks and asset manifest entries.
-4. Explicit unknown-stage and missing-artifact actionable errors.
-5. No silent fallback for required upstream artifacts.
+## 13. Next Milestones
 
-Current safety constraints:
+1. Add first-class transform-plan authoring flow (agent-assisted) inside the pipeline boundary, not only as an external pre-seeded file.
+2. Add `get_asset` command to match tool metadata and close the agent tool surface gap.
+3. Add review aggregation stage (or equivalent) over normalization/transform/lookup/asset warnings.
+4. Add target code generation stage(s) after transform and reporting contracts are fully stable.
+5. Keep all additions versioned, deterministic, and independently executable.
 
-1. Live fetch requires explicit token via `FIGMA_TOKEN` or `--figma-token`.
-2. Quick-link parsing validates host (`figma.com`/`www.figma.com`) and `node-id`.
-3. Fetch and screenshot API failures are surfaced with actionable messaging.
-
-## 8. Implemented Data Contracts (Version Snapshot)
-
-1. Raw snapshot: `snapshot_version = "1.0"` (`figma_client`)
-2. Normalized document: `schema_version = "1.0"` (`figma_normalizer`)
-3. Layout inference record: `decision_version = "1.0"` (`layout_infer`, library-only)
-4. UI spec: `UI_SPEC_VERSION = "2.0"` (`ui_spec`)
-5. Transform plan: `version = "transform_plan/1.0"` (`ui_spec`)
-6. Agent context: `version = "agent_context/1.0"` (`agent_context`)
-7. Search index: `version = "search_index/1.0"` (`agent_context`)
-8. Asset manifest: `manifest_version = "1.0"` (`asset_pipeline`)
-9. Generation warnings: `version = "generation_warnings/1.0"` (`agent_context`)
-10. Generation trace: `version = "generation_trace/1.0"` (`agent_context`)
-
-## 9. Explicit Gaps vs Long-Term Vision
-
-The repository name/history references SwiftUI generation, but current code is intentionally positioned as a deterministic **spec + agent-context foundation**.
-
-Not yet wired into the pipeline:
-
-1. `infer-layout` stage execution in orchestrator (despite `layout_infer` crate availability).
-2. Direct UI codegen stage(s).
-3. Aggregated review report stage in default flow.
-4. LLM bundle and model execution stages.
-
-## 10. Next Milestones (Proposal-Aligned)
-
-Recommended next phases from the current baseline:
-
-1. Wire `layout_infer` into orchestrator as a first-class stage with persisted artifact output.
-2. Thread layout decisions into `build-spec` transform-plan generation.
-3. Add explicit review-report stage that aggregates normalization/inference/asset/agent warnings.
-4. Introduce target codegen stage(s) after contract and review surfaces are stable.
-5. Keep all new stages deterministic, versioned, and independently executable.
-
-## 11. Verification Gates
+## 14. Verification Gates
 
 For code changes:
 
@@ -259,8 +240,4 @@ cargo check --workspace
 cargo test --workspace
 ```
 
-For docs-only changes (like this update), perform a self-check that:
-
-1. stage names and artifacts match orchestrator/CLI code,
-2. crate layout matches workspace manifest,
-3. command examples match current package/binary behavior.
+For docs-only updates: perform consistency checks against stage names, artifact paths, and command examples.
