@@ -328,7 +328,7 @@ fn generate_ui_with_mock_runner_writes_generated_output() {
             api_key: None,
             api_base_url: None,
         },
-        &MockAgentRunner::default(),
+        &MockAgentRunner,
     )
     .expect("generate ui should succeed");
 
@@ -374,7 +374,7 @@ fn generate_ui_in_workspace_always_emits_warning_and_trace_artifacts() {
             api_key: None,
             api_base_url: None,
         },
-        &MockAgentRunner::default(),
+        &MockAgentRunner,
     )
     .expect("generation should succeed");
 
