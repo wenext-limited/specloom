@@ -67,7 +67,7 @@ pub fn build_asset_manifest(normalized: &figma_normalizer::NormalizationOutput) 
         manifest_version: ASSET_MANIFEST_VERSION.to_string(),
         generation: GenerationMetadata {
             source_file_key: normalized.document.source.file_key.clone(),
-            generator_version: "0.1.0".to_string(),
+            generator_version: "0.2.0".to_string(),
         },
         assets,
         warnings,
@@ -184,7 +184,7 @@ mod tests {
                 "manifest_version": "1.0",
                 "generation": {
                     "source_file_key": "abc123",
-                    "generator_version": "0.1.0",
+                    "generator_version": "0.2.0",
                 },
                 "assets": [
                     {
@@ -238,7 +238,7 @@ mod tests {
         let manifest = super::build_asset_manifest(&normalized);
         assert_eq!(manifest.manifest_version, super::ASSET_MANIFEST_VERSION);
         assert_eq!(manifest.generation.source_file_key, "abc123");
-        assert_eq!(manifest.generation.generator_version, "0.1.0");
+        assert_eq!(manifest.generation.generator_version, "0.2.0");
         assert_eq!(manifest.assets.len(), 2);
         assert_eq!(manifest.assets[0].node_id, "10:1");
         assert_eq!(manifest.assets[1].node_id, "12:3");
@@ -293,7 +293,7 @@ mod tests {
             manifest_version: ASSET_MANIFEST_VERSION.to_string(),
             generation: GenerationMetadata {
                 source_file_key: "abc123".to_string(),
-                generator_version: "0.1.0".to_string(),
+                generator_version: "0.2.0".to_string(),
             },
             assets: vec![
                 AssetEntry {

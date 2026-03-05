@@ -178,7 +178,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "forge-agent-context"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -187,7 +187,7 @@ dependencies = [
 
 [[package]]
 name = "forge-asset-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "forge-figma-normalizer",
  "serde",
@@ -196,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "forge-figma-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "reqwest",
  "serde",
@@ -206,7 +206,7 @@ dependencies = [
 
 [[package]]
 name = "forge-figma-normalizer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "forge-figma-client",
  "serde",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "forge-figma-orchestrator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "forge-agent-context",
  "forge-asset-pipeline",
@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "forge-figma-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "forge-figma-client",
@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "forge-layout-infer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "forge-figma-normalizer",
  "serde",
@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "forge-ui-spec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "forge-figma-normalizer",
  "forge-layout-infer",

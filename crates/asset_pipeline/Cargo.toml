@@ -12,7 +12,7 @@ keywords = ["figma", "assets", "ui", "pipeline", "deterministic"]
 categories = ["data-structures", "development-tools"]
 
 [dependencies]
-figma_normalizer = { package = "forge-figma-normalizer", path = "../figma_normalizer", version = "=0.1.0" }
+figma_normalizer = { package = "forge-figma-normalizer", path = "../figma_normalizer", version = "=0.2.0" }
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
