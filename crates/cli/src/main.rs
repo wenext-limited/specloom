@@ -423,7 +423,24 @@ fn main() {
                 api_base_url,
                 output,
             } => {
+                if matches!(output, OutputMode::Text) {
+                    println!(
+                        "pipeline=generate-ui provider={} bundle={}",
+                        generate_ui_provider_label(provider),
+                        bundle
+                    );
+                    println!("[1/3] RUN  step=load-config");
+                }
                 let config = load_specloom_config_or_exit(output);
+                if matches!(output, OutputMode::Text) {
+                    println!("[1/3] DONE step=load-config");
+                    println!(
+                        "[2/3] RUN  step=prepare-request provider={} model={}",
+                        generate_ui_provider_label(provider),
+                        normalize_optional_field(model.as_deref())
+                            .unwrap_or_else(|| default_generate_ui_model(provider).to_string())
+                    );
+                }
                 let request = core::GenerateUiRequest {
                     bundle_path: bundle,
                     provider: match provider {
@@ -436,9 +453,25 @@ fn main() {
                         .or_else(|| config.anthropic_api_key()),
                     api_base_url: normalize_optional_field(api_base_url.as_deref()),
                 };
+                if matches!(output, OutputMode::Text) {
+                    println!(
+                        "[2/3] DONE step=prepare-request provider={} model={}",
+                        generate_ui_provider_label(provider),
+                        request.model.as_deref().unwrap_or(default_generate_ui_model(provider))
+                    );
+                    println!(
+                        "[3/3] RUN  step=execute-generation provider={} bundle={}",
+                        generate_ui_provider_label(provider),
+                        request.bundle_path
+                    );
+                }
                 match core::generate_ui(&request) {
                     Ok(result) => match output {
                         OutputMode::Text => {
+                            println!(
+                                "[3/3] DONE step=execute-generation generated={}",
+                                result.generated_paths.len()
+                            );
                             println!(
                                 "stage=generate-ui generated={}",
                                 result.generated_paths.len()
@@ -457,7 +490,16 @@ fn main() {
                             println!("{{\"stage\":\"generate-ui\",\"artifacts\":[{artifacts}]}}");
                         }
                     },
-                    Err(err) => emit_error_and_exit(err, output),
+                    Err(err) => {
+                        if matches!(output, OutputMode::Text) {
+                            println!(
+                                "[3/3] FAIL step=execute-generation provider={} bundle={}",
+                                generate_ui_provider_label(provider),
+                                request.bundle_path
+                            );
+                        }
+                        emit_error_and_exit(err, output)
+                    }
                 }
             }
             Command::AgentTool { tool } => match tool {
@@ -810,6 +852,20 @@ fn input_mode_label(mode: InputMode) -> &'static str {
         InputMode::Fixture => "fixture",
         InputMode::Live => "live",
         InputMode::Snapshot => "snapshot",
+    }
+}
+
+fn generate_ui_provider_label(provider: GenerateUiProviderOption) -> &'static str {
+    match provider {
+        GenerateUiProviderOption::Mock => "mock",
+        GenerateUiProviderOption::Anthropic => "anthropic",
+    }
+}
+
+fn default_generate_ui_model(provider: GenerateUiProviderOption) -> &'static str {
+    match provider {
+        GenerateUiProviderOption::Mock => "mock-default",
+        GenerateUiProviderOption::Anthropic => "claude-3-5-sonnet-latest",
     }
 }
 

@@ -782,6 +782,53 @@ fn generate_ui_subcommand_rejects_anthropic_without_api_key() {
 }
 
 #[test]
+fn generate_ui_subcommand_prints_progress_in_text_mode() {
+    let workspace_root = unique_cli_workspace_root("generate_ui_subcommand_prints_progress");
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let prepare = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+        ])
+        .output()
+        .unwrap();
+    assert!(prepare.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("pipeline=generate-ui provider=mock"));
+    assert!(stdout.contains("[1/3] RUN  step=load-config"));
+    assert!(stdout.contains("[1/3] DONE step=load-config"));
+    assert!(stdout.contains("[2/3] RUN  step=prepare-request"));
+    assert!(stdout.contains("[2/3] DONE step=prepare-request"));
+    assert!(stdout.contains("[3/3] RUN  step=execute-generation"));
+    assert!(stdout.contains("[3/3] DONE step=execute-generation"));
+    assert!(stdout.contains("artifact=output/generated/react-tailwind/App.tsx"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn generate_ui_subcommand_uses_anthropic_api_key_from_global_config() {
     let workspace_root =
         unique_cli_workspace_root("generate_ui_subcommand_uses_anthropic_api_key_from_config");
