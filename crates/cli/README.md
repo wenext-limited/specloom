@@ -56,7 +56,7 @@ Set your token once (or pass `--figma-token` per command):
 export FIGMA_TOKEN="<YOUR_FIGMA_PERSONAL_ACCESS_TOKEN>"
 ```
 
-Optional global config (plain text):
+Optional global config (plain text, auto-created with a commented template on first config-aware command):
 
 ```toml
 # ~/.config/specloom/config.toml

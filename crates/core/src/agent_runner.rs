@@ -33,6 +33,8 @@ pub struct AnthropicAgentRunner {
     config: AnthropicRunnerConfig,
 }
 
+const ANTHROPIC_FALLBACK_MAX_TOKENS: u64 = 4096;
+
 impl AnthropicAgentRunner {
     pub fn new(config: AnthropicRunnerConfig) -> Result<Self, PipelineError> {
         if config.api_key.trim().is_empty() {
@@ -80,6 +82,7 @@ impl AgentRunner for AnthropicAgentRunner {
                 .preamble(
                     "You generate UI files for Specloom. Return code only without markdown fences.",
                 )
+                .max_tokens(anthropic_max_tokens(self.config.model.as_str()))
                 .build();
             agent
                 .prompt(prompt.as_str())
@@ -157,6 +160,28 @@ fn normalize_target(raw_target: &str) -> String {
     }
 }
 
+fn anthropic_max_tokens(model: &str) -> u64 {
+    let normalized = model.trim().to_ascii_lowercase();
+    if normalized.starts_with("claude-opus-4") {
+        32_000
+    } else if normalized.starts_with("claude-sonnet-4")
+        || normalized.starts_with("claude-3-7-sonnet")
+    {
+        64_000
+    } else if normalized.starts_with("claude-3-5-sonnet")
+        || normalized.starts_with("claude-3-5-haiku")
+    {
+        8_192
+    } else if normalized.starts_with("claude-3-opus")
+        || normalized.starts_with("claude-3-sonnet")
+        || normalized.starts_with("claude-3-haiku")
+    {
+        4_096
+    } else {
+        ANTHROPIC_FALLBACK_MAX_TOKENS
+    }
+}
+
 fn build_anthropic_prompt(bundle: &LlmBundle, file_name: &str, language_hint: &str) -> String {
     let bundle_json = serde_json::to_string_pretty(bundle).unwrap_or_else(|_| "{}".to_string());
     format!(
@@ -178,4 +203,22 @@ fn strip_markdown_fences(value: &str) -> String {
         let _ = remaining.pop();
     }
     remaining.join("\n").trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::anthropic_max_tokens;
+
+    #[test]
+    fn anthropic_max_tokens_matches_known_claude_aliases() {
+        assert_eq!(anthropic_max_tokens("claude-3-5-sonnet-latest"), 8_192);
+        assert_eq!(anthropic_max_tokens("claude-3-7-sonnet-20250219"), 64_000);
+        assert_eq!(anthropic_max_tokens("claude-opus-4-20250514"), 32_000);
+    }
+
+    #[test]
+    fn anthropic_max_tokens_uses_conservative_fallback_for_unknown_models() {
+        assert_eq!(anthropic_max_tokens("claude-custom-preview"), 4_096);
+        assert_eq!(anthropic_max_tokens(" custom-anthropic-model "), 4_096);
+    }
 }

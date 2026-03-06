@@ -77,6 +77,32 @@ fn fetch_subcommand_rejects_live_input_without_required_values() {
 }
 
 #[test]
+fn generate_ui_subcommand_bootstraps_global_config_template_when_missing() {
+    let workspace_root =
+        unique_cli_workspace_root("generate_ui_subcommand_bootstraps_global_config_template");
+    let home_root = unique_cli_workspace_root("specloom-config-home-bootstrap");
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .env("HOME", home_root.as_path())
+        .args(["generate-ui", "--bundle", "missing.json"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+
+    let config_path = home_root.join(".config/specloom/config.toml");
+    assert!(config_path.is_file());
+    let config_contents = std::fs::read_to_string(config_path.as_path()).unwrap();
+    assert!(config_contents.contains("[auth]"));
+    assert!(config_contents.contains("# figma_token = \"...\""));
+    assert!(config_contents.contains("# anthropic_api_key = \"...\""));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&home_root);
+}
+
+#[test]
 fn fetch_subcommand_rejects_snapshot_input_without_required_values() {
     let output = specloom_command()
         .args(["fetch", "--input", "snapshot"])

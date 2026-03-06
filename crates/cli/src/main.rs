@@ -3,6 +3,10 @@
 use clap::Parser;
 use serde::Deserialize;
 
+const SPECLOOM_CONFIG_HOME_RELATIVE_PATH: &str = ".config/specloom";
+const SPECLOOM_CONFIG_FILE_NAME: &str = "config.toml";
+const DEFAULT_SPECLOOM_CONFIG_TEMPLATE: &str = "# Specloom global config\n[auth]\n# figma_token = \"...\"\n# anthropic_api_key = \"...\"\n";
+
 #[derive(Debug, Parser)]
 #[command(name = "specloom")]
 #[command(about = "Figma node tree to spec-first pipeline CLI")]
@@ -758,9 +762,11 @@ fn load_specloom_config() -> Result<SpecloomConfig, String> {
     let Some(home_dir) = home_dir else {
         return Ok(SpecloomConfig::default());
     };
-    let config_path = home_dir.join(".config/specloom/config.toml");
+    let config_path = home_dir
+        .join(SPECLOOM_CONFIG_HOME_RELATIVE_PATH)
+        .join(SPECLOOM_CONFIG_FILE_NAME);
     if !config_path.is_file() {
-        return Ok(SpecloomConfig::default());
+        bootstrap_specloom_config(config_path.as_path())?;
     }
 
     let text = std::fs::read_to_string(config_path.as_path()).map_err(|err| {
@@ -775,6 +781,28 @@ fn load_specloom_config() -> Result<SpecloomConfig, String> {
             config_path.display()
         )
     })
+}
+
+fn bootstrap_specloom_config(config_path: &std::path::Path) -> Result<(), String> {
+    let Some(parent) = config_path.parent() else {
+        return Err(format!(
+            "failed to resolve Specloom config directory for {}. Set HOME and retry.",
+            config_path.display()
+        ));
+    };
+    std::fs::create_dir_all(parent).map_err(|err| {
+        format!(
+            "failed to create Specloom config directory at {}: {err}. Fix permissions and retry.",
+            parent.display()
+        )
+    })?;
+    std::fs::write(config_path, DEFAULT_SPECLOOM_CONFIG_TEMPLATE).map_err(|err| {
+        format!(
+            "failed to create Specloom config at {}: {err}. Fix permissions and retry.",
+            config_path.display()
+        )
+    })?;
+    Ok(())
 }
 
 fn input_mode_label(mode: InputMode) -> &'static str {
