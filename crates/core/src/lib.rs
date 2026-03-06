@@ -304,6 +304,8 @@ fn prepare_llm_bundle_in_workspace_with_instruction_overrides(
     remote_base_url_override: Option<&str>,
     config_root_override: Option<&Path>,
 ) -> Result<String, PipelineError> {
+    ensure_transform_plan_ready_for_bundle(workspace_root)?;
+
     let snapshot = read_required_json::<figma_client::RawFigmaSnapshot>(
         workspace_root,
         FETCH_ARTIFACT_RELATIVE_PATH,
@@ -836,6 +838,304 @@ fn generate_transform_plan(
     }
 
     Ok(ui_spec::TransformPlan::default())
+}
+
+fn ensure_transform_plan_ready_for_bundle(workspace_root: &Path) -> Result<(), PipelineError> {
+    let pre_layout = read_required_ron::<ui_spec::UiSpec>(workspace_root, PRE_LAYOUT_ARTIFACT_RELATIVE_PATH)?;
+    let existing_plan = read_optional_transform_plan(workspace_root)?;
+    let transform_plan = match existing_plan {
+        Some(plan) if !plan.decisions.is_empty() => {
+            plan.validate_against_pre_layout(&pre_layout)
+                .map_err(transform_plan_validation_error)?;
+            plan
+        }
+        Some(_) | None => {
+            let normalized = read_required_json::<figma_client::normalizer::NormalizationOutput>(
+                workspace_root,
+                NORMALIZED_ARTIFACT_RELATIVE_PATH,
+            )?;
+            let authored = author_transform_plan(&pre_layout, &normalized);
+            authored
+                .validate_against_pre_layout(&pre_layout)
+                .map_err(transform_plan_validation_error)?;
+
+            let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+            let authored_bytes =
+                serde_json::to_vec_pretty(&authored).map_err(serialization_error)?;
+            write_bytes(transform_plan_path.as_path(), authored_bytes.as_slice())?;
+            authored
+        }
+    };
+
+    let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+    let transform_plan_bytes =
+        serde_json::to_vec_pretty(&transform_plan).map_err(serialization_error)?;
+    write_bytes(transform_plan_path.as_path(), transform_plan_bytes.as_slice())?;
+
+    run_build_spec_stage(workspace_root)?;
+    run_build_agent_context_stage(workspace_root, &PipelineRunConfig::default())?;
+    Ok(())
+}
+
+fn read_optional_transform_plan(
+    workspace_root: &Path,
+) -> Result<Option<ui_spec::TransformPlan>, PipelineError> {
+    let transform_plan_path = workspace_root.join(TRANSFORM_PLAN_ARTIFACT_RELATIVE_PATH);
+    if !transform_plan_path.is_file() {
+        return Ok(None);
+    }
+
+    let bytes = std::fs::read(transform_plan_path.as_path()).map_err(io_error)?;
+    let plan = serde_json::from_slice::<ui_spec::TransformPlan>(bytes.as_slice())
+        .map_err(serialization_error)?;
+    Ok(Some(plan))
+}
+
+fn author_transform_plan(
+    pre_layout: &ui_spec::UiSpec,
+    normalized: &figma_client::normalizer::NormalizationOutput,
+) -> ui_spec::TransformPlan {
+    let nodes_by_id = normalized
+        .document
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut decisions = Vec::new();
+    collect_transform_decisions(pre_layout, true, &nodes_by_id, &mut decisions);
+
+    if decisions.is_empty() {
+        decisions.push(default_keep_decision(
+            pre_layout,
+            ui_spec::SuggestedNodeType::Container,
+            0.40,
+            "Preserve the root node as an explicit authored transform baseline.",
+        ));
+    }
+
+    ui_spec::TransformPlan {
+        version: ui_spec::TRANSFORM_PLAN_VERSION.to_string(),
+        decisions,
+    }
+}
+
+fn collect_transform_decisions(
+    node: &ui_spec::UiSpec,
+    is_root: bool,
+    nodes_by_id: &std::collections::BTreeMap<&str, &figma_client::normalizer::NormalizedNode>,
+    out: &mut Vec<ui_spec::TransformDecision>,
+) {
+    if let Some(decision) = infer_transform_decision(node, is_root, nodes_by_id) {
+        out.push(decision);
+    }
+
+    for child in node.children() {
+        collect_transform_decisions(child, false, nodes_by_id, out);
+    }
+}
+
+fn infer_transform_decision(
+    node: &ui_spec::UiSpec,
+    is_root: bool,
+    nodes_by_id: &std::collections::BTreeMap<&str, &figma_client::normalizer::NormalizedNode>,
+) -> Option<ui_spec::TransformDecision> {
+    let normalized_node = nodes_by_id.get(node.id()).copied()?;
+    let child_nodes = node
+        .children()
+        .iter()
+        .filter_map(|child| nodes_by_id.get(child.id()).copied())
+        .collect::<Vec<_>>();
+
+    if let Some((suggested_type, confidence, reason)) =
+        infer_scroll_view_decision(normalized_node, child_nodes.as_slice())
+    {
+        return Some(default_keep_decision(node, suggested_type, confidence, reason));
+    }
+
+    if let Some((suggested_type, confidence, reason)) =
+        infer_stack_decision(normalized_node, child_nodes.as_slice())
+    {
+        return Some(default_keep_decision(node, suggested_type, confidence, reason));
+    }
+
+    if is_root {
+        return Some(default_keep_decision(
+            node,
+            suggested_type_for_existing_node(node),
+            0.45,
+            "Preserve the root node as an explicit authored transform anchor.",
+        ));
+    }
+
+    None
+}
+
+fn infer_scroll_view_decision(
+    normalized_node: &figma_client::normalizer::NormalizedNode,
+    child_nodes: &[&figma_client::normalizer::NormalizedNode],
+) -> Option<(ui_spec::SuggestedNodeType, f32, &'static str)> {
+    if child_nodes.len() < 2 {
+        return None;
+    }
+
+    let (min_x, max_x, min_y, max_y) = child_bounds_extent(child_nodes)?;
+    let node_right = normalized_node.bounds.x + normalized_node.bounds.w;
+    let node_bottom = normalized_node.bounds.y + normalized_node.bounds.h;
+    let overflow_x = (max_x - node_right).max(0.0) + (normalized_node.bounds.x - min_x).max(0.0);
+    let overflow_y =
+        (max_y - node_bottom).max(0.0) + (normalized_node.bounds.y - min_y).max(0.0);
+
+    if overflow_y > normalized_node.bounds.h * 0.10 && overflow_y >= overflow_x {
+        return Some((
+            ui_spec::SuggestedNodeType::ScrollView,
+            0.70,
+            "Child bounds overflow vertically, so preserve the container as a scroll region.",
+        ));
+    }
+
+    None
+}
+
+fn infer_stack_decision(
+    normalized_node: &figma_client::normalizer::NormalizedNode,
+    child_nodes: &[&figma_client::normalizer::NormalizedNode],
+) -> Option<(ui_spec::SuggestedNodeType, f32, &'static str)> {
+    if child_nodes.len() < 2 {
+        return None;
+    }
+
+    let x_centers = child_nodes
+        .iter()
+        .map(|child| child.bounds.x + (child.bounds.w / 2.0))
+        .collect::<Vec<_>>();
+    let y_centers = child_nodes
+        .iter()
+        .map(|child| child.bounds.y + (child.bounds.h / 2.0))
+        .collect::<Vec<_>>();
+    let average_width =
+        child_nodes.iter().map(|child| child.bounds.w).sum::<f32>() / child_nodes.len() as f32;
+    let average_height =
+        child_nodes.iter().map(|child| child.bounds.h).sum::<f32>() / child_nodes.len() as f32;
+    let x_range = range(x_centers.as_slice());
+    let y_range = range(y_centers.as_slice());
+
+    if x_range <= average_width * 0.40 && y_range <= average_height * 0.40 {
+        return Some((
+            ui_spec::SuggestedNodeType::ZStack,
+            0.62,
+            "Child centers heavily overlap, so preserve the container as a layered stack.",
+        ));
+    }
+
+    if y_range <= average_height * 0.55 && x_range > average_width * 0.60 {
+        return Some((
+            ui_spec::SuggestedNodeType::HStack,
+            0.74,
+            "Child centers are aligned horizontally with low vertical variance.",
+        ));
+    }
+
+    if x_range <= average_width * 0.55 && y_range > average_height * 0.60 {
+        return Some((
+            ui_spec::SuggestedNodeType::VStack,
+            0.74,
+            "Child centers are aligned vertically with low horizontal variance.",
+        ));
+    }
+
+    if normalized_node.bounds.h >= normalized_node.bounds.w && y_range >= x_range * 1.10 {
+        return Some((
+            ui_spec::SuggestedNodeType::VStack,
+            0.58,
+            "Parent bounds and child distribution suggest a primary vertical flow.",
+        ));
+    }
+
+    if normalized_node.bounds.w > normalized_node.bounds.h && x_range >= y_range * 1.10 {
+        return Some((
+            ui_spec::SuggestedNodeType::HStack,
+            0.58,
+            "Parent bounds and child distribution suggest a primary horizontal flow.",
+        ));
+    }
+
+    Some((
+        ui_spec::SuggestedNodeType::ZStack,
+        0.52,
+        "Child centers vary across both axes, so keep the container as an overlap stack.",
+    ))
+}
+
+fn child_bounds_extent(
+    child_nodes: &[&figma_client::normalizer::NormalizedNode],
+) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+
+    for child in child_nodes {
+        min_x = min_x.min(child.bounds.x);
+        max_x = max_x.max(child.bounds.x + child.bounds.w);
+        min_y = min_y.min(child.bounds.y);
+        max_y = max_y.max(child.bounds.y + child.bounds.h);
+    }
+
+    if min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite() {
+        Some((min_x, max_x, min_y, max_y))
+    } else {
+        None
+    }
+}
+
+fn range(values: &[f32]) -> f32 {
+    let mut min_value = f32::INFINITY;
+    let mut max_value = f32::NEG_INFINITY;
+    for value in values {
+        min_value = min_value.min(*value);
+        max_value = max_value.max(*value);
+    }
+
+    if min_value.is_finite() && max_value.is_finite() {
+        max_value - min_value
+    } else {
+        0.0
+    }
+}
+
+fn default_keep_decision(
+    node: &ui_spec::UiSpec,
+    suggested_type: ui_spec::SuggestedNodeType,
+    confidence: f32,
+    reason: impl Into<String>,
+) -> ui_spec::TransformDecision {
+    ui_spec::TransformDecision {
+        node_id: node.id().to_string(),
+        suggested_type,
+        child_policy: ui_spec::ChildPolicy {
+            mode: ui_spec::ChildPolicyMode::Keep,
+            children: Vec::new(),
+        },
+        repeat_element_ids: None,
+        confidence,
+        reason: reason.into(),
+    }
+}
+
+fn suggested_type_for_existing_node(node: &ui_spec::UiSpec) -> ui_spec::SuggestedNodeType {
+    match node.node_type() {
+        ui_spec::NodeType::Container => ui_spec::SuggestedNodeType::Container,
+        ui_spec::NodeType::Instance => ui_spec::SuggestedNodeType::Instance,
+        ui_spec::NodeType::Text => ui_spec::SuggestedNodeType::Text,
+        ui_spec::NodeType::Image => ui_spec::SuggestedNodeType::Image,
+        ui_spec::NodeType::Shape => ui_spec::SuggestedNodeType::Shape,
+        ui_spec::NodeType::Vector => ui_spec::SuggestedNodeType::Vector,
+        ui_spec::NodeType::Button => ui_spec::SuggestedNodeType::Button,
+        ui_spec::NodeType::ScrollView => ui_spec::SuggestedNodeType::ScrollView,
+        ui_spec::NodeType::HStack => ui_spec::SuggestedNodeType::HStack,
+        ui_spec::NodeType::VStack => ui_spec::SuggestedNodeType::VStack,
+        ui_spec::NodeType::ZStack => ui_spec::SuggestedNodeType::ZStack,
+    }
 }
 
 fn run_build_agent_context_stage(
@@ -1849,6 +2149,12 @@ fn normalizer_error(err: crate::figma_client::normalizer::NormalizationError) ->
 }
 
 fn ui_spec_build_error(err: ui_spec::UiSpecBuildError) -> PipelineError {
+    PipelineError::UiSpecBuild(err.to_string())
+}
+
+fn transform_plan_validation_error(
+    err: ui_spec::TransformPlanValidationError,
+) -> PipelineError {
     PipelineError::UiSpecBuild(err.to_string())
 }
 

@@ -94,7 +94,7 @@ Behavior:
 Important current boundary:
 
 1. `build-spec` does **not** directly invoke an LLM in mainline code.
-2. Agent-driven plan authoring is currently an external/operator step that writes `transform_plan.json`.
+2. `prepare-llm-bundle` now acts as the transform-readiness gate: it reuses a valid non-empty `transform_plan.json`, or authors a non-empty plan heuristically, then refreshes `build-spec` + `build-agent-context` before bundling.
 
 ### `build-agent-context`
 

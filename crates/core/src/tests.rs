@@ -303,6 +303,116 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
 }
 
 #[test]
+fn prepare_llm_bundle_authors_transform_plan_when_existing_plan_is_empty() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_authors_transform_plan_when_existing_plan_is_empty",
+    );
+
+    seed_transformable_snapshot_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let original_spec = std::fs::read_to_string(workspace_root.join("output/specs/ui_spec.ron"))
+        .expect("original ui spec should be readable");
+    assert!(original_spec.contains("Container("));
+
+    let original_plan = std::fs::read_to_string(workspace_root.join("output/specs/transform_plan.json"))
+        .expect("original plan should be readable");
+    let original_plan_value: serde_json::Value =
+        serde_json::from_str(original_plan.as_str()).expect("original plan should decode");
+    assert_eq!(
+        original_plan_value["decisions"]
+            .as_array()
+            .expect("decisions should be array")
+            .len(),
+        0
+    );
+
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Screen?node-id=1-1".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready dashboard screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    let authored_plan = std::fs::read_to_string(workspace_root.join("output/specs/transform_plan.json"))
+        .expect("authored plan should be readable");
+    let authored_plan: ui_spec::TransformPlan =
+        serde_json::from_str(authored_plan.as_str()).expect("authored plan should decode");
+    assert!(!authored_plan.decisions.is_empty());
+    assert_eq!(authored_plan.decisions[0].node_id, "1:1");
+    assert_eq!(
+        authored_plan.decisions[0].suggested_type,
+        ui_spec::SuggestedNodeType::VStack
+    );
+
+    let refreshed_spec = std::fs::read_to_string(workspace_root.join("output/specs/ui_spec.ron"))
+        .expect("refreshed ui spec should be readable");
+    assert!(refreshed_spec.contains("VStack("));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
+fn prepare_llm_bundle_reuses_existing_non_empty_transform_plan() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_reuses_existing_non_empty_transform_plan",
+    );
+
+    seed_transformable_snapshot_pipeline(workspace_root.as_path());
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let authored_plan = ui_spec::TransformPlan {
+        version: ui_spec::TRANSFORM_PLAN_VERSION.to_string(),
+        decisions: vec![ui_spec::TransformDecision {
+            node_id: "1:1".to_string(),
+            suggested_type: ui_spec::SuggestedNodeType::HStack,
+            child_policy: ui_spec::ChildPolicy {
+                mode: ui_spec::ChildPolicyMode::Keep,
+                children: Vec::new(),
+            },
+            repeat_element_ids: None,
+            confidence: 0.91,
+            reason: "User-authored test plan".to_string(),
+        }],
+    };
+    let authored_plan_path = workspace_root.join("output/specs/transform_plan.json");
+    std::fs::write(
+        authored_plan_path.as_path(),
+        serde_json::to_vec_pretty(&authored_plan).expect("plan should encode"),
+    )
+    .expect("plan should write");
+    run_stage_in_workspace("build-spec", workspace_root.as_path())
+        .expect("build-spec should refresh ui spec");
+    run_stage_in_workspace("build-agent-context", workspace_root.as_path())
+        .expect("build-agent-context should refresh agent context");
+
+    prepare_llm_bundle_in_workspace(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Screen?node-id=1-1".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready dashboard screen".to_string(),
+        },
+    )
+    .expect("bundle should build");
+
+    let preserved_plan = std::fs::read_to_string(authored_plan_path.as_path())
+        .expect("preserved plan should be readable");
+    let preserved_plan: ui_spec::TransformPlan =
+        serde_json::from_str(preserved_plan.as_str()).expect("preserved plan should decode");
+    assert_eq!(preserved_plan, authored_plan);
+
+    let refreshed_spec = std::fs::read_to_string(workspace_root.join("output/specs/ui_spec.ron"))
+        .expect("refreshed ui spec should be readable");
+    assert!(refreshed_spec.contains("HStack("));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+}
+
+#[test]
 fn prepare_llm_bundle_downloads_tagged_release_snapshot_when_local_files_are_missing() {
     let workspace_root = unique_test_workspace_root(
         "prepare_llm_bundle_downloads_tagged_release_snapshot_when_local_files_are_missing",
@@ -1213,6 +1323,56 @@ fn seed_full_fixture_pipeline(workspace_root: &std::path::Path) {
         .expect("build-agent-context should run fourth");
     run_stage_in_workspace("export-assets", workspace_root)
         .expect("export-assets should run fifth");
+}
+
+fn seed_transformable_snapshot_pipeline(workspace_root: &std::path::Path) {
+    let raw_snapshot_path = workspace_root.join("output/raw/fetch_snapshot.json");
+    if let Some(parent) = raw_snapshot_path.parent() {
+        std::fs::create_dir_all(parent).expect("raw snapshot parent should be creatable");
+    }
+    std::fs::write(
+        raw_snapshot_path.as_path(),
+        r#"{
+            "snapshot_version": "1.0",
+            "source": {
+                "file_key": "transform-file-key",
+                "node_id": "1:1",
+                "figma_api_version": "v1"
+            },
+            "payload": {
+                "document": {
+                    "id": "1:1",
+                    "name": "Dashboard Root",
+                    "type": "FRAME",
+                    "absoluteBoundingBox": { "x": 0.0, "y": 0.0, "width": 390.0, "height": 844.0 },
+                    "children": [
+                        {
+                            "id": "1:2",
+                            "name": "Header",
+                            "type": "TEXT",
+                            "absoluteBoundingBox": { "x": 24.0, "y": 32.0, "width": 180.0, "height": 28.0 },
+                            "children": []
+                        },
+                        {
+                            "id": "1:3",
+                            "name": "Subtitle",
+                            "type": "TEXT",
+                            "absoluteBoundingBox": { "x": 24.0, "y": 84.0, "width": 220.0, "height": 22.0 },
+                            "children": []
+                        }
+                    ]
+                }
+            }
+        }"#,
+    )
+    .expect("raw snapshot should be writable");
+
+    run_stage_in_workspace("normalize", workspace_root).expect("normalize should run first");
+    run_stage_in_workspace("build-spec", workspace_root).expect("build-spec should run second");
+    run_stage_in_workspace("build-agent-context", workspace_root)
+        .expect("build-agent-context should run third");
+    run_stage_in_workspace("export-assets", workspace_root)
+        .expect("export-assets should run fourth");
 }
 
 fn seed_bundle_instruction_sources(workspace_root: &std::path::Path) {

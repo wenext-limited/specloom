@@ -140,6 +140,8 @@ specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>
 specloom generate-ui --bundle output/agent/llm_bundle.json
 ```
 
+`prepare-llm-bundle` is the workflow gate for transform readiness. If `transform_plan.json` is missing or empty, it must author a non-empty plan and refresh downstream transformed artifacts before the bundle is created.
+
 ## Guardrails
 
 1. Never silently ignore a node mismatch.
