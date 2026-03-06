@@ -58,13 +58,15 @@ specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic 
 
 `prepare-llm-bundle` resolves instruction docs in this order:
 1. local project files (`.codex/SKILLS.md`, `docs/agent-playbook.md`, `docs/figma-ui-coder.md`, and referenced skill docs)
-2. matching GitHub release tag based on CLI version (`v<version>`, then `<version>`)
+2. extracted release snapshot cache at `~/.config/specloom/release_cache/<tag>/...`
+3. download the matching GitHub release for the running CLI version (`v<version>`, then `<version>`)
+4. if the running version is not released yet, fall back to the latest GitHub release and cache that snapshot locally
 
 Global config (optional):
 
 1. File: `~/.config/specloom/config.toml`
 2. Credential precedence: CLI flag > env var > config file
-3. Remote skill/doc cache: `~/.config/specloom/skills_cache/<release_ref>/...`
+3. Release snapshot cache: `~/.config/specloom/release_cache/<tag>/...`
 
 Example:
 

@@ -188,10 +188,11 @@ Notes:
 4. `prepare-llm-bundle` writes `output/agent/llm_bundle.json`.
 5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
 6. `--provider anthropic` requires `ANTHROPIC_API_KEY` (or `--api-key`).
-7. `prepare-llm-bundle` loads instruction docs from local project files first; if missing, it fetches from GitHub release refs matching CLI version (`v<version>`, then `<version>`).
-8. Remote instruction docs/skills are cached at `~/.config/specloom/skills_cache/<release_ref>/...`.
-9. `~/.config/specloom/config.toml` is plain text. Keep it private and never commit/upload it.
-10. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+7. `prepare-llm-bundle` loads instruction docs from local project files first; if missing, it reads from `~/.config/specloom/release_cache/<tag>/...`.
+8. When the cache is missing, `prepare-llm-bundle` downloads the matching GitHub release snapshot for the running CLI version (`v<version>`, then `<version>`), or falls back to the latest GitHub release if the current version is not yet released.
+9. Downloaded instruction docs/skills are cached at `~/.config/specloom/release_cache/<tag>/...`.
+10. `~/.config/specloom/config.toml` is plain text. Keep it private and never commit/upload it.
+11. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
 
 ## License
 

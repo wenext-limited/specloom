@@ -303,18 +303,23 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
 }
 
 #[test]
-fn prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing() {
+fn prepare_llm_bundle_downloads_tagged_release_snapshot_when_local_files_are_missing() {
     let workspace_root = unique_test_workspace_root(
-        "prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing",
+        "prepare_llm_bundle_downloads_tagged_release_snapshot_when_local_files_are_missing",
     );
     let config_root = unique_test_workspace_root(
-        "prepare_llm_bundle_fetches_instructions_from_remote_release_when_local_files_are_missing-config-root",
+        "prepare_llm_bundle_downloads_tagged_release_snapshot_when_local_files_are_missing-config-root",
     );
     seed_full_fixture_pipeline(workspace_root.as_path());
 
     let version = env!("CARGO_PKG_VERSION");
     let release_ref = format!("v{version}");
-    let skills_markdown = r#"# Project Skills Guide
+    let archive = build_release_snapshot_archive(
+        release_ref.as_str(),
+        &[
+            (
+                ".codex/SKILLS.md",
+                r#"# Project Skills Guide
 
 ## Active Skills
 
@@ -325,31 +330,37 @@ Use layout guidance.
 2. `authoring-transform-plan`
 Path: `.codex/skills/authoring-transform-plan/SKILL.md`
 Use transform plan guidance.
-"#;
+"#,
+            ),
+            (
+                ".codex/skills/recognizing-layout/SKILL.md",
+                "# remote recognizing-layout",
+            ),
+            (
+                ".codex/skills/authoring-transform-plan/SKILL.md",
+                "# remote authoring-transform-plan",
+            ),
+            ("docs/agent-playbook.md", "# remote playbook"),
+            ("docs/figma-ui-coder.md", "# remote figma ui coder"),
+        ],
+    );
     let routes = std::collections::BTreeMap::from([
         (
-            format!("/{release_ref}/.codex/SKILLS.md"),
-            skills_markdown.to_string(),
+            format!("/repos/wenext-limited/specloom/releases/tags/{release_ref}"),
+            TestHttpResponse::json(format!(
+                "{{\"tag_name\":\"{release_ref}\",\"tarball_url\":\"__BASE_URL__/archives/{release_ref}.tar.gz\"}}"
+            )),
         ),
         (
-            format!("/{release_ref}/docs/agent-playbook.md"),
-            "# remote playbook".to_string(),
-        ),
-        (
-            format!("/{release_ref}/docs/figma-ui-coder.md"),
-            "# remote figma ui coder".to_string(),
-        ),
-        (
-            format!("/{release_ref}/.codex/skills/recognizing-layout/SKILL.md"),
-            "# remote recognizing-layout".to_string(),
-        ),
-        (
-            format!("/{release_ref}/.codex/skills/authoring-transform-plan/SKILL.md"),
-            "# remote authoring-transform-plan".to_string(),
+            format!("/archives/{release_ref}.tar.gz"),
+            TestHttpResponse::binary("application/gzip", archive),
         ),
     ]);
     let (base_url, request_rx, server_thread) =
         start_instruction_response_server(routes).expect("instruction server should start");
+    let release_api_base_url = format!("{base_url}/repos/wenext-limited/specloom/releases");
+    let metadata_path = format!("/repos/wenext-limited/specloom/releases/tags/{release_ref}");
+    let archive_path = format!("/archives/{release_ref}.tar.gz");
 
     let result = prepare_llm_bundle_in_workspace_with_instruction_overrides(
         workspace_root.as_path(),
@@ -358,7 +369,7 @@ Use transform plan guidance.
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
         },
-        Some(base_url.as_str()),
+        Some(release_api_base_url.as_str()),
         Some(config_root.as_path()),
     )
     .expect("bundle should build with remote instruction sources");
@@ -394,15 +405,22 @@ Use transform plan guidance.
     }));
 
     let requests = collect_server_requests(request_rx);
-    assert_eq!(requests.len(), 5);
-    for request in requests {
-        assert!(request.contains(&format!(" /{release_ref}/")));
-    }
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.contains(&format!(" {metadata_path} ")))
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.contains(&format!(" {archive_path} ")))
+    );
 
     server_thread
         .join()
         .expect("instruction server thread should join");
-    let cache_root = config_root.join("skills_cache").join(release_ref);
+    let cache_root = config_root.join("release_cache").join(release_ref);
     assert!(cache_root.join(".codex/SKILLS.md").is_file());
     assert!(cache_root.join("docs/agent-playbook.md").is_file());
     assert!(cache_root.join("docs/figma-ui-coder.md").is_file());
@@ -415,6 +433,19 @@ Use transform plan guidance.
         cache_root
             .join(".codex/skills/authoring-transform-plan/SKILL.md")
             .is_file()
+    );
+    let metadata_requests = requests
+        .iter()
+        .filter(|request| request.contains(&format!(" {metadata_path} ")))
+        .count();
+    assert_eq!(metadata_requests, 1);
+    assert_eq!(
+        bundle.instructions.agent_playbook_markdown,
+        "# remote playbook"
+    );
+    assert_eq!(
+        bundle.instructions.figma_ui_coder_markdown,
+        "# remote figma ui coder"
     );
     let _ = std::fs::remove_dir_all(&workspace_root);
     let _ = std::fs::remove_dir_all(&config_root);
@@ -464,12 +495,137 @@ fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
 }
 
 #[test]
-fn prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present() {
+fn prepare_llm_bundle_falls_back_to_latest_release_snapshot_when_current_version_is_unreleased() {
     let workspace_root = unique_test_workspace_root(
-        "prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present",
+        "prepare_llm_bundle_falls_back_to_latest_release_snapshot_when_current_version_is_unreleased",
     );
     let config_root = unique_test_workspace_root(
-        "prepare_llm_bundle_reads_instruction_files_from_global_cache_when_present-config-root",
+        "prepare_llm_bundle_falls_back_to_latest_release_snapshot_when_current_version_is_unreleased-config-root",
+    );
+    seed_full_fixture_pipeline(workspace_root.as_path());
+
+    let version = env!("CARGO_PKG_VERSION");
+    let latest_release_ref = "v9.9.9";
+    let archive = build_release_snapshot_archive(
+        latest_release_ref,
+        &[
+            (
+                ".codex/SKILLS.md",
+                r#"# Project Skills Guide
+
+## Active Skills
+
+1. `recognizing-layout`
+Path: `.codex/skills/recognizing-layout/SKILL.md`
+Use layout guidance.
+"#,
+            ),
+            (
+                ".codex/skills/recognizing-layout/SKILL.md",
+                "# latest recognizing-layout",
+            ),
+            ("docs/agent-playbook.md", "# latest playbook"),
+            ("docs/figma-ui-coder.md", "# latest figma ui coder"),
+        ],
+    );
+    let routes = std::collections::BTreeMap::from([
+        (
+            format!("/repos/wenext-limited/specloom/releases/tags/v{version}"),
+            TestHttpResponse::status(
+                "404 Not Found",
+                "application/json",
+                b"{\"error\":\"not found\"}".to_vec(),
+            ),
+        ),
+        (
+            format!("/repos/wenext-limited/specloom/releases/tags/{version}"),
+            TestHttpResponse::status(
+                "404 Not Found",
+                "application/json",
+                b"{\"error\":\"not found\"}".to_vec(),
+            ),
+        ),
+        (
+            "/repos/wenext-limited/specloom/releases/latest".to_string(),
+            TestHttpResponse::json(format!(
+                "{{\"tag_name\":\"{latest_release_ref}\",\"tarball_url\":\"__BASE_URL__/archives/{latest_release_ref}.tar.gz\"}}"
+            )),
+        ),
+        (
+            format!("/archives/{latest_release_ref}.tar.gz"),
+            TestHttpResponse::binary("application/gzip", archive),
+        ),
+    ]);
+    let (base_url, request_rx, server_thread) =
+        start_instruction_response_server(routes).expect("instruction server should start");
+    let release_api_base_url = format!("{base_url}/repos/wenext-limited/specloom/releases");
+
+    let result = prepare_llm_bundle_in_workspace_with_instruction_overrides(
+        workspace_root.as_path(),
+        &PrepareLlmBundleRequest {
+            figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
+            target: "react-tailwind".to_string(),
+            intent: "Generate production-ready login screen".to_string(),
+        },
+        Some(release_api_base_url.as_str()),
+        Some(config_root.as_path()),
+    )
+    .expect("bundle should build from latest release snapshot");
+    assert_eq!(result, "output/agent/llm_bundle.json");
+
+    let bundle_path = workspace_root.join("output/agent/llm_bundle.json");
+    let bundle_text = std::fs::read_to_string(bundle_path).expect("bundle should be readable");
+    let bundle: LlmBundle =
+        serde_json::from_str(bundle_text.as_str()).expect("bundle should decode");
+    assert_eq!(
+        bundle.instructions.agent_playbook_markdown,
+        "# latest playbook"
+    );
+    assert_eq!(
+        bundle.instructions.figma_ui_coder_markdown,
+        "# latest figma ui coder"
+    );
+
+    let requests = collect_server_requests(request_rx);
+    assert!(requests.iter().any(|request| {
+        request.contains(&format!(
+            " /repos/wenext-limited/specloom/releases/tags/v{version} "
+        ))
+    }));
+    assert!(requests.iter().any(|request| {
+        request.contains(&format!(
+            " /repos/wenext-limited/specloom/releases/tags/{version} "
+        ))
+    }));
+    assert!(
+        requests.iter().any(|request| {
+            request.contains(" /repos/wenext-limited/specloom/releases/latest ")
+        })
+    );
+    assert!(
+        requests.iter().any(|request| {
+            request.contains(&format!(" /archives/{latest_release_ref}.tar.gz "))
+        })
+    );
+
+    server_thread
+        .join()
+        .expect("instruction server thread should join");
+    let cache_root = config_root.join("release_cache").join(latest_release_ref);
+    assert!(cache_root.join(".codex/SKILLS.md").is_file());
+    assert!(cache_root.join("docs/agent-playbook.md").is_file());
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&config_root);
+}
+
+#[test]
+fn prepare_llm_bundle_reads_instruction_files_from_cached_release_snapshot_when_present() {
+    let workspace_root = unique_test_workspace_root(
+        "prepare_llm_bundle_reads_instruction_files_from_cached_release_snapshot_when_present",
+    );
+    let config_root = unique_test_workspace_root(
+        "prepare_llm_bundle_reads_instruction_files_from_cached_release_snapshot_when_present-config-root",
     );
     seed_full_fixture_pipeline(workspace_root.as_path());
 
@@ -903,7 +1059,7 @@ fn collect_server_requests(request_rx: std::sync::mpsc::Receiver<String>) -> Vec
 }
 
 fn start_instruction_response_server(
-    routes: std::collections::BTreeMap<String, String>,
+    routes: std::collections::BTreeMap<String, TestHttpResponse>,
 ) -> Result<
     (
         String,
@@ -967,24 +1123,86 @@ fn start_instruction_response_server(
                 .and_then(|line| line.split_whitespace().nth(1))
                 .unwrap_or("/");
 
-            let (status_line, body) = if let Some(body) = routes.get(request_path) {
-                ("200 OK", body.clone())
+            let response_spec = routes.get(request_path).cloned().unwrap_or_else(|| {
+                TestHttpResponse::status(
+                    "404 Not Found",
+                    "application/json",
+                    b"{\"error\":\"not found\"}".to_vec(),
+                )
+            });
+            let response_body = if response_spec.content_type == "application/json"
+                || response_spec.content_type.starts_with("text/")
+            {
+                String::from_utf8_lossy(response_spec.body.as_slice())
+                    .replace("__BASE_URL__", format!("http://{address}").as_str())
+                    .into_bytes()
             } else {
-                ("404 Not Found", "{\"error\":\"not found\"}".to_string())
+                response_spec.body.clone()
             };
             let response = format!(
-                "HTTP/1.1 {status_line}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
+                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                response_spec.status_line,
+                response_spec.content_type,
+                response_body.len(),
             );
             stream
                 .write_all(response.as_bytes())
-                .expect("server should write response");
+                .expect("server should write response head");
+            stream
+                .write_all(response_body.as_slice())
+                .expect("server should write response body");
             stream.flush().expect("server should flush response");
         }
     });
 
     Ok((format!("http://{address}"), request_rx, server_thread))
+}
+
+#[derive(Clone)]
+struct TestHttpResponse {
+    status_line: String,
+    content_type: String,
+    body: Vec<u8>,
+}
+
+impl TestHttpResponse {
+    fn status(status_line: &str, content_type: &str, body: Vec<u8>) -> Self {
+        Self {
+            status_line: status_line.to_string(),
+            content_type: content_type.to_string(),
+            body,
+        }
+    }
+
+    fn json(body: String) -> Self {
+        Self::status("200 OK", "application/json", body.into_bytes())
+    }
+
+    fn binary(content_type: &str, body: Vec<u8>) -> Self {
+        Self::status("200 OK", content_type, body)
+    }
+}
+
+fn build_release_snapshot_archive(tag: &str, files: &[(&str, &str)]) -> Vec<u8> {
+    let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut builder = tar::Builder::new(gzip);
+    for (relative_path, contents) in files {
+        let archive_path = format!("specloom-{tag}/{}", relative_path.trim_start_matches('/'));
+        let mut header = tar::Header::new_gnu();
+        header
+            .set_path(archive_path)
+            .expect("archive path should be valid");
+        header.set_mode(0o644);
+        header.set_size(contents.len() as u64);
+        header.set_cksum();
+        builder
+            .append(&header, contents.as_bytes())
+            .expect("archive entry should be appendable");
+    }
+    let gzip = builder
+        .into_inner()
+        .expect("tar builder should finish cleanly");
+    gzip.finish().expect("gzip encoder should finish cleanly")
 }
 
 fn seed_full_fixture_pipeline(workspace_root: &std::path::Path) {
@@ -1054,7 +1272,7 @@ Use transform plan guidance.
 }
 
 fn seed_cached_bundle_instruction_sources(config_root: &std::path::Path, release_ref: &str) {
-    let cache_root = config_root.join("skills_cache").join(release_ref);
+    let cache_root = config_root.join("release_cache").join(release_ref);
     let skills_guide_path = cache_root.join(".codex/SKILLS.md");
     if let Some(parent) = skills_guide_path.parent() {
         std::fs::create_dir_all(parent).expect("cached skills guide parent should be creatable");

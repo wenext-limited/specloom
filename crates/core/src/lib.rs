@@ -180,11 +180,12 @@ const LLM_BUNDLE_ARTIFACT_RELATIVE_PATH: &str = "output/agent/llm_bundle.json";
 const GENERATION_WARNINGS_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_warnings.json";
 const GENERATION_TRACE_ARTIFACT_RELATIVE_PATH: &str = "output/reports/generation_trace.json";
 const ASSET_MANIFEST_RELATIVE_PATH: &str = "output/assets/asset_manifest.json";
-const DEFAULT_INSTRUCTION_REMOTE_BASE_URL: &str =
-    "https://raw.githubusercontent.com/WendellXY/specloom";
-const INSTRUCTION_REMOTE_BASE_URL_ENV: &str = "SPECLOOM_SKILLS_REMOTE_BASE_URL";
+const DEFAULT_INSTRUCTION_RELEASE_API_BASE_URL: &str =
+    "https://api.github.com/repos/wenext-limited/specloom/releases";
+const INSTRUCTION_RELEASE_API_BASE_URL_ENV: &str = "SPECLOOM_RELEASE_API_BASE_URL";
+const LEGACY_INSTRUCTION_REMOTE_BASE_URL_ENV: &str = "SPECLOOM_SKILLS_REMOTE_BASE_URL";
 const SPECLOOM_CONFIG_HOME_RELATIVE_PATH: &str = ".config/specloom";
-const INSTRUCTION_CACHE_DIR_NAME: &str = "skills_cache";
+const INSTRUCTION_RELEASE_CACHE_DIR_NAME: &str = "release_cache";
 
 const FETCH_FIXTURE_FILE_KEY: &str = "fixture-file-key";
 const FETCH_FIXTURE_NODE_ID: &str = "0:1";
@@ -1246,40 +1247,18 @@ fn build_bundle_instructions_with_remote_base_url(
     config_root_override: Option<&Path>,
 ) -> Result<BundleInstructions, PipelineError> {
     let skills_guide_path = ".codex/SKILLS.md";
-    let remote_base_url = resolve_instruction_remote_base_url(remote_base_url_override)
-        .ok_or_else(|| PipelineError::MissingInputArtifact(skills_guide_path.to_string()))?;
-    let release_refs = instruction_release_refs();
-    let skills_guide_markdown = read_instruction_text(
-        workspace_root,
-        skills_guide_path,
-        remote_base_url.as_str(),
-        release_refs.as_slice(),
-        config_root_override,
-    )?;
-    let agent_playbook_markdown = read_instruction_text(
-        workspace_root,
-        "docs/agent-playbook.md",
-        remote_base_url.as_str(),
-        release_refs.as_slice(),
-        config_root_override,
-    )?;
-    let figma_ui_coder_markdown = read_instruction_text(
-        workspace_root,
-        "docs/figma-ui-coder.md",
-        remote_base_url.as_str(),
-        release_refs.as_slice(),
-        config_root_override,
-    )?;
+    let release_api_base_url =
+        resolve_instruction_release_api_base_url(remote_base_url_override)
+            .ok_or_else(|| PipelineError::MissingInputArtifact(skills_guide_path.to_string()))?;
+    let mut resolver =
+        InstructionResolver::new(workspace_root, release_api_base_url, config_root_override);
+    let skills_guide_markdown = resolver.read_text(skills_guide_path)?;
+    let agent_playbook_markdown = resolver.read_text("docs/agent-playbook.md")?;
+    let figma_ui_coder_markdown = resolver.read_text("docs/figma-ui-coder.md")?;
 
     let mut skill_docs = Vec::new();
     for (name, path) in parse_active_skill_refs(skills_guide_markdown.as_str()) {
-        let markdown = read_instruction_text(
-            workspace_root,
-            path.as_str(),
-            remote_base_url.as_str(),
-            release_refs.as_slice(),
-            config_root_override,
-        )?;
+        let markdown = resolver.read_text(path.as_str())?;
         skill_docs.push(BundleSkillDoc {
             name,
             path,
@@ -1342,14 +1321,21 @@ fn extract_backticked_name(line: &str) -> Option<String> {
     Some(tail[..end].to_string())
 }
 
-fn resolve_instruction_remote_base_url(remote_base_url_override: Option<&str>) -> Option<String> {
+fn resolve_instruction_release_api_base_url(
+    remote_base_url_override: Option<&str>,
+) -> Option<String> {
     normalize_optional_field(remote_base_url_override)
         .or_else(|| {
-            std::env::var(INSTRUCTION_REMOTE_BASE_URL_ENV)
+            std::env::var(INSTRUCTION_RELEASE_API_BASE_URL_ENV)
                 .ok()
                 .and_then(|value| normalize_optional_field(Some(value.as_str())))
         })
-        .or_else(|| Some(DEFAULT_INSTRUCTION_REMOTE_BASE_URL.to_string()))
+        .or_else(|| {
+            std::env::var(LEGACY_INSTRUCTION_REMOTE_BASE_URL_ENV)
+                .ok()
+                .and_then(|value| normalize_optional_field(Some(value.as_str())))
+        })
+        .or_else(|| Some(DEFAULT_INSTRUCTION_RELEASE_API_BASE_URL.to_string()))
 }
 
 fn instruction_release_refs() -> Vec<String> {
@@ -1357,152 +1343,403 @@ fn instruction_release_refs() -> Vec<String> {
     vec![format!("v{version}"), version.to_string()]
 }
 
-fn read_instruction_text(
-    workspace_root: &Path,
-    relative_path: &str,
-    remote_base_url: &str,
-    release_refs: &[String],
-    config_root_override: Option<&Path>,
-) -> Result<String, PipelineError> {
-    let local_path = workspace_root.join(relative_path);
-    if local_path.is_file() {
-        return std::fs::read_to_string(local_path.as_path()).map_err(io_error);
-    }
-
-    if let Some(cached) =
-        read_cached_instruction_text(relative_path, release_refs, config_root_override)?
-    {
-        return Ok(cached);
-    }
-
-    let (release_ref, text) =
-        read_remote_instruction_text(relative_path, remote_base_url, release_refs)?;
-    write_cached_instruction_text(
-        release_ref.as_str(),
-        relative_path,
-        text.as_str(),
-        config_root_override,
-    );
-    Ok(text)
+struct InstructionResolver<'a> {
+    workspace_root: &'a Path,
+    release_api_base_url: String,
+    config_root_override: Option<&'a Path>,
+    cached_snapshot_root: Option<std::path::PathBuf>,
 }
 
-fn read_cached_instruction_text(
-    relative_path: &str,
-    release_refs: &[String],
-    config_root_override: Option<&Path>,
-) -> Result<Option<String>, PipelineError> {
-    for release_ref in release_refs {
-        let Some(cache_path) =
-            instruction_cache_file_path(release_ref.as_str(), relative_path, config_root_override)?
-        else {
-            continue;
-        };
-        if cache_path.is_file() {
-            let text = std::fs::read_to_string(cache_path.as_path()).map_err(io_error)?;
-            return Ok(Some(text));
+impl<'a> InstructionResolver<'a> {
+    fn new(
+        workspace_root: &'a Path,
+        release_api_base_url: String,
+        config_root_override: Option<&'a Path>,
+    ) -> Self {
+        Self {
+            workspace_root,
+            release_api_base_url,
+            config_root_override,
+            cached_snapshot_root: None,
         }
     }
-    Ok(None)
-}
 
-fn write_cached_instruction_text(
-    release_ref: &str,
-    relative_path: &str,
-    text: &str,
-    config_root_override: Option<&Path>,
-) {
-    let Ok(Some(cache_path)) =
-        instruction_cache_file_path(release_ref, relative_path, config_root_override)
-    else {
-        return;
-    };
-    if let Some(parent) = cache_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(cache_path.as_path(), text.as_bytes());
-}
+    fn read_text(&mut self, relative_path: &str) -> Result<String, PipelineError> {
+        let normalized_relative_path = normalize_instruction_relative_path(relative_path)?;
+        let local_path = self.workspace_root.join(normalized_relative_path.as_path());
+        if local_path.is_file() {
+            return std::fs::read_to_string(local_path.as_path()).map_err(io_error);
+        }
 
-fn read_remote_instruction_text(
-    relative_path: &str,
-    remote_base_url: &str,
-    release_refs: &[String],
-) -> Result<(String, String), PipelineError> {
-    if release_refs.is_empty() {
-        return Err(PipelineError::MissingInputArtifact(
+        let snapshot_root = self.release_snapshot_root()?;
+        let snapshot_path = snapshot_root.join(normalized_relative_path.as_path());
+        if snapshot_path.is_file() {
+            return std::fs::read_to_string(snapshot_path.as_path()).map_err(io_error);
+        }
+
+        Err(PipelineError::MissingInputArtifact(
             relative_path.to_string(),
-        ));
+        ))
     }
 
-    let client = reqwest::blocking::Client::builder()
+    fn release_snapshot_root(&mut self) -> Result<&Path, PipelineError> {
+        if self.cached_snapshot_root.is_none() {
+            self.cached_snapshot_root = Some(resolve_instruction_release_snapshot_root(
+                self.release_api_base_url.as_str(),
+                self.config_root_override,
+            )?);
+        }
+
+        Ok(self
+            .cached_snapshot_root
+            .as_deref()
+            .expect("release snapshot root should be initialized"))
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GithubReleaseMetadata {
+    tag_name: String,
+    tarball_url: String,
+}
+
+fn resolve_instruction_release_snapshot_root(
+    release_api_base_url: &str,
+    config_root_override: Option<&Path>,
+) -> Result<std::path::PathBuf, PipelineError> {
+    let release_refs = instruction_release_refs();
+    for release_ref in &release_refs {
+        if let Some(snapshot_root) =
+            instruction_release_snapshot_root_path(release_ref.as_str(), config_root_override)?
+            && snapshot_root.is_dir()
+        {
+            return Ok(snapshot_root);
+        }
+    }
+
+    let client = build_instruction_http_client()?;
+    let mut attempts = Vec::new();
+
+    for release_ref in &release_refs {
+        match fetch_release_metadata_by_tag(&client, release_api_base_url, release_ref.as_str())? {
+            Some(metadata) => {
+                return cache_instruction_release_snapshot(
+                    &client,
+                    &metadata,
+                    config_root_override,
+                );
+            }
+            None => {
+                attempts.push(format!("tag={} status=404", release_ref));
+            }
+        }
+    }
+
+    match fetch_latest_release_metadata(&client, release_api_base_url)? {
+        Some(metadata) => {
+            attempts.push(format!("latest={}", metadata.tag_name));
+            cache_instruction_release_snapshot(&client, &metadata, config_root_override)
+        }
+        None => Err(PipelineError::FetchClient(format!(
+            "instruction release snapshot unavailable for tags [{}], and no latest release was found. Attempts: {}",
+            release_refs.join(", "),
+            attempts.join("; ")
+        ))),
+    }
+}
+
+fn build_instruction_http_client() -> Result<reqwest::blocking::Client, PipelineError> {
+    reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|err| {
             PipelineError::FetchClient(format!("instruction source client build error: {err}"))
-        })?;
-    let mut attempts = Vec::new();
-    let normalized_path = relative_path.trim_start_matches('/');
+        })
+}
 
-    for release_ref in release_refs {
-        let url = format!(
-            "{}/{}/{}",
-            remote_base_url.trim_end_matches('/'),
-            release_ref,
-            normalized_path
-        );
-        let response = client
-            .get(url.as_str())
-            .header(
-                reqwest::header::USER_AGENT,
-                format!("specloom/{}", env!("CARGO_PKG_VERSION")),
-            )
-            .send();
-        match response {
-            Ok(response) if response.status().is_success() => {
-                let text = response.text().map_err(|err| {
+fn fetch_release_metadata_by_tag(
+    client: &reqwest::blocking::Client,
+    release_api_base_url: &str,
+    release_ref: &str,
+) -> Result<Option<GithubReleaseMetadata>, PipelineError> {
+    let url = format!(
+        "{}/tags/{}",
+        release_api_base_url.trim_end_matches('/'),
+        release_ref
+    );
+    fetch_release_metadata(
+        client,
+        url.as_str(),
+        format!("tag `{release_ref}`").as_str(),
+    )
+}
+
+fn fetch_latest_release_metadata(
+    client: &reqwest::blocking::Client,
+    release_api_base_url: &str,
+) -> Result<Option<GithubReleaseMetadata>, PipelineError> {
+    let url = format!("{}/latest", release_api_base_url.trim_end_matches('/'));
+    fetch_release_metadata(client, url.as_str(), "latest release")
+}
+
+fn fetch_release_metadata(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    label: &str,
+) -> Result<Option<GithubReleaseMetadata>, PipelineError> {
+    let response = client
+        .get(url)
+        .header(
+            reqwest::header::USER_AGENT,
+            format!("specloom/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .send()
+        .map_err(|err| {
+            PipelineError::FetchClient(format!(
+                "instruction release lookup transport error for {label}: {err}"
+            ))
+        })?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        return Err(PipelineError::FetchClient(format!(
+            "instruction release lookup failed for {label}: status={} url={url}",
+            response.status().as_u16()
+        )));
+    }
+
+    response
+        .json::<GithubReleaseMetadata>()
+        .map(Some)
+        .map_err(|err| {
+            PipelineError::FetchClient(format!(
+                "instruction release metadata decode error for {label}: {err}"
+            ))
+        })
+}
+
+fn cache_instruction_release_snapshot(
+    client: &reqwest::blocking::Client,
+    metadata: &GithubReleaseMetadata,
+    config_root_override: Option<&Path>,
+) -> Result<std::path::PathBuf, PipelineError> {
+    let Some(snapshot_root) =
+        instruction_release_snapshot_root_path(metadata.tag_name.as_str(), config_root_override)?
+    else {
+        return Err(PipelineError::FetchClient(
+            "instruction release cache root is unavailable; set HOME or provide a config root"
+                .to_string(),
+        ));
+    };
+
+    if snapshot_root.is_dir() {
+        return Ok(snapshot_root);
+    }
+
+    let tarball_url =
+        normalize_optional_field(Some(metadata.tarball_url.as_str())).ok_or_else(|| {
+            PipelineError::FetchClient(format!(
+                "instruction release metadata for `{}` is missing tarball_url",
+                metadata.tag_name
+            ))
+        })?;
+
+    let response = client
+        .get(tarball_url.as_str())
+        .header(
+            reqwest::header::USER_AGENT,
+            format!("specloom/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .send()
+        .map_err(|err| {
+            PipelineError::FetchClient(format!(
+                "instruction release download transport error for `{}`: {err}",
+                metadata.tag_name
+            ))
+        })?;
+
+    if !response.status().is_success() {
+        return Err(PipelineError::FetchClient(format!(
+            "instruction release download failed for `{}`: status={} url={}",
+            metadata.tag_name,
+            response.status().as_u16(),
+            tarball_url
+        )));
+    }
+
+    let archive_bytes = response.bytes().map_err(|err| {
+        PipelineError::FetchClient(format!(
+            "instruction release download decode error for `{}`: {err}",
+            metadata.tag_name
+        ))
+    })?;
+
+    let parent = snapshot_root.parent().ok_or_else(|| {
+        PipelineError::FetchClient(format!(
+            "instruction release cache path for `{}` has no parent",
+            metadata.tag_name
+        ))
+    })?;
+    std::fs::create_dir_all(parent).map_err(io_error)?;
+
+    let temp_root = parent.join(format!(
+        ".tmp-{}-{}-{}",
+        sanitize_release_ref_for_path(metadata.tag_name.as_str()),
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| PipelineError::FetchClient(format!(
+                "instruction release temp path clock error for `{}`: {err}",
+                metadata.tag_name
+            )))?
+            .as_nanos()
+    ));
+    if temp_root.exists() {
+        let _ = std::fs::remove_dir_all(temp_root.as_path());
+    }
+    std::fs::create_dir_all(temp_root.as_path()).map_err(io_error)?;
+
+    let extract_result =
+        extract_instruction_release_archive(archive_bytes.as_ref(), temp_root.as_path());
+    if let Err(err) = extract_result {
+        let _ = std::fs::remove_dir_all(temp_root.as_path());
+        return Err(err);
+    }
+
+    match std::fs::rename(temp_root.as_path(), snapshot_root.as_path()) {
+        Ok(()) => Ok(snapshot_root),
+        Err(err) if snapshot_root.is_dir() => {
+            let _ = std::fs::remove_dir_all(temp_root.as_path());
+            Ok(snapshot_root)
+        }
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(temp_root.as_path());
+            Err(io_error(err))
+        }
+    }
+}
+
+fn extract_instruction_release_archive(
+    archive_bytes: &[u8],
+    destination_root: &Path,
+) -> Result<(), PipelineError> {
+    use std::io::Write;
+
+    let decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(archive_bytes));
+    let mut archive = tar::Archive::new(decoder);
+    let entries = archive.entries().map_err(|err| {
+        PipelineError::FetchClient(format!("instruction release archive open error: {err}"))
+    })?;
+
+    for entry in entries {
+        let mut entry = entry.map_err(|err| {
+            PipelineError::FetchClient(format!("instruction release archive entry error: {err}"))
+        })?;
+        let Some(relative_path) = normalize_archive_entry_relative_path(
+            entry
+                .path()
+                .map_err(|err| {
                     PipelineError::FetchClient(format!(
-                        "instruction source decode error for {relative_path}: {err}"
+                        "instruction release archive path error: {err}"
                     ))
-                });
-                return text.map(|text| (release_ref.clone(), text));
-            }
-            Ok(response) => {
-                attempts.push(format!(
-                    "ref={} status={} url={}",
-                    release_ref,
-                    response.status().as_u16(),
-                    url
-                ));
-            }
-            Err(err) => {
-                attempts.push(format!(
-                    "ref={} transport_error={} url={}",
-                    release_ref, err, url
-                ));
+                })?
+                .as_ref(),
+        )?
+        else {
+            continue;
+        };
+
+        let output_path = destination_root.join(relative_path.as_path());
+        if entry.header().entry_type().is_dir() {
+            std::fs::create_dir_all(output_path.as_path()).map_err(io_error)?;
+            continue;
+        }
+
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent).map_err(io_error)?;
+        }
+        let mut output_file = std::fs::File::create(output_path.as_path()).map_err(io_error)?;
+        std::io::copy(&mut entry, &mut output_file).map_err(|err| {
+            PipelineError::FetchClient(format!(
+                "instruction release archive copy error for `{}`: {err}",
+                output_path.display()
+            ))
+        })?;
+        output_file.flush().map_err(io_error)?;
+    }
+
+    Ok(())
+}
+
+fn normalize_archive_entry_relative_path(
+    archive_path: &Path,
+) -> Result<Option<std::path::PathBuf>, PipelineError> {
+    use std::path::Component;
+
+    let mut components = archive_path.components();
+    match components.next() {
+        Some(Component::Normal(_)) => {}
+        _ => {
+            return Err(PipelineError::FetchClient(format!(
+                "instruction release archive path `{}` is not safe",
+                archive_path.display()
+            )));
+        }
+    }
+
+    let mut normalized = std::path::PathBuf::new();
+    for component in components {
+        match component {
+            Component::Normal(segment) => normalized.push(segment),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(PipelineError::FetchClient(format!(
+                    "instruction release archive path `{}` is not safe",
+                    archive_path.display()
+                )));
             }
         }
     }
 
-    Err(PipelineError::FetchClient(format!(
-        "instruction source unavailable for `{relative_path}` with release refs [{}]. Attempts: {}",
-        release_refs.join(", "),
-        attempts.join("; ")
-    )))
+    if normalized.as_os_str().is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(normalized))
 }
 
-fn instruction_cache_file_path(
+fn sanitize_release_ref_for_path(release_ref: &str) -> String {
+    release_ref
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn instruction_release_snapshot_root_path(
     release_ref: &str,
-    relative_path: &str,
     config_root_override: Option<&Path>,
 ) -> Result<Option<std::path::PathBuf>, PipelineError> {
     let Some(config_root) = resolve_specloom_config_root(config_root_override) else {
         return Ok(None);
     };
-    let normalized_relative_path = normalize_instruction_relative_path(relative_path)?;
     Ok(Some(
         config_root
-            .join(INSTRUCTION_CACHE_DIR_NAME)
-            .join(release_ref)
-            .join(normalized_relative_path),
+            .join(INSTRUCTION_RELEASE_CACHE_DIR_NAME)
+            .join(sanitize_release_ref_for_path(release_ref)),
     ))
 }
 
