@@ -62,36 +62,11 @@ impl AgentRunner for AnthropicAgentRunner {
         let relative_path = format!("output/generated/{target}/{file_name}");
 
         let prompt = build_anthropic_prompt(&request.bundle, file_name, language_hint);
-
-        let runtime = tokio::runtime::Runtime::new().map_err(|err| {
-            PipelineError::AgentRunner(format!("anthropic runtime initialization failed: {err}"))
-        })?;
-        let response = runtime.block_on(async {
-            let client = if let Some(api_base_url) = self.config.api_base_url.as_ref() {
-                anthropic::Client::builder(self.config.api_key.as_str())
-                    .base_url(api_base_url.as_str())
-                    .build()
-                    .map_err(|err| {
-                        PipelineError::AgentRunner(format!("anthropic client build failed: {err}"))
-                    })?
-            } else {
-                anthropic::Client::new(self.config.api_key.as_str())
-            };
-            let agent = client
-                .agent(self.config.model.as_str())
-                .preamble(
-                    "You generate UI files for Specloom. Return code only without markdown fences.",
-                )
-                .max_tokens(anthropic_max_tokens(self.config.model.as_str()))
-                .build();
-            agent
-                .prompt(prompt.as_str())
-                .into_future()
-                .await
-                .map_err(|err| {
-                    PipelineError::AgentRunner(format!("anthropic generation failed: {err}"))
-                })
-        })?;
+        let response = run_anthropic_text_completion(
+            &self.config,
+            "You generate UI files for Specloom. Return code only without markdown fences.",
+            prompt.as_str(),
+        )?;
         let contents = strip_markdown_fences(response.as_str());
 
         if contents.trim().is_empty() {
@@ -107,6 +82,39 @@ impl AgentRunner for AnthropicAgentRunner {
             }],
         })
     }
+}
+
+pub fn run_anthropic_text_completion(
+    config: &AnthropicRunnerConfig,
+    preamble: &str,
+    prompt: &str,
+) -> Result<String, PipelineError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| {
+        PipelineError::AgentRunner(format!("anthropic runtime initialization failed: {err}"))
+    })?;
+    runtime.block_on(async {
+        let client = if let Some(api_base_url) = config.api_base_url.as_ref() {
+            anthropic::Client::builder(config.api_key.as_str())
+                .base_url(api_base_url.as_str())
+                .build()
+                .map_err(|err| {
+                    PipelineError::AgentRunner(format!("anthropic client build failed: {err}"))
+                })?
+        } else {
+            anthropic::Client::new(config.api_key.as_str())
+        };
+        let agent = client
+            .agent(config.model.as_str())
+            .preamble(preamble)
+            .max_tokens(anthropic_max_tokens(config.model.as_str()))
+            .temperature(0.0)
+            .build();
+        agent
+            .prompt(prompt)
+            .into_future()
+            .await
+            .map_err(|err| PipelineError::AgentRunner(format!("anthropic generation failed: {err}")))
+    })
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -190,7 +198,7 @@ fn build_anthropic_prompt(bundle: &LlmBundle, file_name: &str, language_hint: &s
     )
 }
 
-fn strip_markdown_fences(value: &str) -> String {
+pub(crate) fn strip_markdown_fences(value: &str) -> String {
     let trimmed = value.trim();
     if !trimmed.starts_with("```") {
         return trimmed.to_string();

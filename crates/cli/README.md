@@ -63,9 +63,14 @@ Optional global config (plain text, auto-created with a commented template on fi
 [auth]
 figma_token = "..."
 anthropic_api_key = "..."
+
+[generation]
+default_provider = "anthropic"
+default_model = "claude-3-5-sonnet-latest"
 ```
 
 Credential precedence: CLI flag > env var > config file.
+Provider/model precedence: CLI flag > config file > built-in defaults.
 
 Fetch and inspect a real node snapshot:
 
@@ -142,7 +147,7 @@ Generate target UI from a bundle:
 
 ```bash
 specloom generate-ui --bundle output/agent/llm_bundle.json
-specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest
+specloom generate-ui --bundle output/agent/llm_bundle.json --model claude-3-5-sonnet-latest
 specloom generate-ui --bundle output/agent/llm_bundle.json --output json
 ```
 
@@ -174,7 +179,7 @@ specloom agent-tool get-node-screenshot --file-key <FILE_KEY> --node-id <NODE_ID
 | Build `output/agent/llm_bundle.json` from deterministic artifacts | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>"` | text (default) |
 | Build `output/agent/llm_bundle.json` as machine-readable output | `specloom prepare-llm-bundle --figma-url "<figma-url>" --target <target> --intent "<intent>" --output json` | json |
 | Generate target UI code from bundle path | `specloom generate-ui --bundle output/agent/llm_bundle.json` | text (default) |
-| Generate target UI code from bundle path via Anthropic Claude | `specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest` | text (default) |
+| Generate target UI code from bundle path via Anthropic Claude | `specloom generate-ui --bundle output/agent/llm_bundle.json --model claude-3-5-sonnet-latest` | text (default) |
 | Generate target UI code from bundle path as machine-readable output | `specloom generate-ui --bundle output/agent/llm_bundle.json --output json` | json |
 | Find candidate nodes via deterministic fuzzy lookup | `specloom agent-tool find-nodes --query "<text>" --output json` | text/json |
 | Read indexed node details | `specloom agent-tool get-node-info --node-id <id>` | text/json |
@@ -187,12 +192,13 @@ Notes:
 3. `generate` runs deterministic default stages sequentially: `fetch`, `normalize`, `build-spec`, `build-agent-context`, and `export-assets`.
 4. `prepare-llm-bundle` writes `output/agent/llm_bundle.json`.
 5. `generate-ui` writes generated code under `output/generated/<target>/...` and updates warning/trace reports.
-6. `--provider anthropic` requires `ANTHROPIC_API_KEY` (or `--api-key`).
+6. Anthropic is the default generation provider. `ANTHROPIC_API_KEY` (or `--api-key`) is required whenever Anthropic is selected by flags, config, or built-in defaults.
 7. `prepare-llm-bundle` loads instruction docs from local project files first; if missing, it reads from `~/.config/specloom/release_cache/<tag>/...`.
 8. When the cache is missing, `prepare-llm-bundle` downloads the matching GitHub release snapshot for the running CLI version (`v<version>`, then `<version>`), or falls back to the latest GitHub release if the current version is not yet released.
 9. Downloaded instruction docs/skills are cached at `~/.config/specloom/release_cache/<tag>/...`.
 10. `~/.config/specloom/config.toml` is plain text. Keep it private and never commit/upload it.
 11. Agent tool commands are stateless run-and-consume invocations; no background daemon is required.
+12. `prepare-llm-bundle` uses the selected generation provider to author `transform_plan.json` when the current plan is missing or empty, then refreshes transformed artifacts before it writes the bundle.
 
 ## License
 

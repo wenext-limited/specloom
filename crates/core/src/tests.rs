@@ -254,6 +254,10 @@ fn prepare_llm_bundle_in_workspace_writes_bundle_artifact() {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
     )
     .expect("bundle should build");
@@ -333,6 +337,10 @@ fn prepare_llm_bundle_authors_transform_plan_when_existing_plan_is_empty() {
             figma_url: "https://www.figma.com/design/abc/Screen?node-id=1-1".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready dashboard screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
     )
     .expect("bundle should build");
@@ -395,6 +403,10 @@ fn prepare_llm_bundle_reuses_existing_non_empty_transform_plan() {
             figma_url: "https://www.figma.com/design/abc/Screen?node-id=1-1".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready dashboard screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
     )
     .expect("bundle should build");
@@ -478,6 +490,10 @@ Use transform plan guidance.
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         Some(release_api_base_url.as_str()),
         Some(config_root.as_path()),
@@ -575,6 +591,10 @@ fn prepare_llm_bundle_prefers_local_instruction_files_when_available() {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         Some("http://127.0.0.1:9"),
         None,
@@ -676,6 +696,10 @@ Use layout guidance.
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         Some(release_api_base_url.as_str()),
         Some(config_root.as_path()),
@@ -749,6 +773,10 @@ fn prepare_llm_bundle_reads_instruction_files_from_cached_release_snapshot_when_
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
         Some("http://127.0.0.1:9"),
         Some(config_root.as_path()),
@@ -790,6 +818,10 @@ fn generate_ui_with_mock_runner_writes_generated_output() {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
     )
     .expect("bundle should build");
@@ -836,6 +868,10 @@ fn generate_ui_in_workspace_always_emits_warning_and_trace_artifacts() {
             figma_url: "https://www.figma.com/design/abc/Login?node-id=1-2".to_string(),
             target: "react-tailwind".to_string(),
             intent: "Generate production-ready login screen".to_string(),
+            provider: GenerateUiProvider::Mock,
+            model: None,
+            api_key: None,
+            api_base_url: None,
         },
     )
     .expect("bundle should build");

@@ -129,15 +129,16 @@ fn prepare_llm_bundle_success_smoke() {
             "react-tailwind",
             "--intent",
             "Generate login UI",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
 
     assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        "stage=prepare-llm-bundle output=output/agent artifact=output/agent/llm_bundle.json\n"
-    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("pipeline=prepare-llm-bundle provider=mock"));
+    assert!(stdout.contains("stage=prepare-llm-bundle output=output/agent artifact=output/agent/llm_bundle.json"));
     assert!(out.stderr.is_empty());
     assert!(
         workspace_root
@@ -170,6 +171,8 @@ fn generate_ui_success_smoke() {
             "react-tailwind",
             "--intent",
             "Generate login UI",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -177,7 +180,13 @@ fn generate_ui_success_smoke() {
 
     let out = specloom_command()
         .current_dir(workspace_root.as_path())
-        .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .args([
+            "generate-ui",
+            "--bundle",
+            "output/agent/llm_bundle.json",
+            "--provider",
+            "mock",
+        ])
         .output()
         .unwrap();
 

@@ -23,12 +23,12 @@ Before it emits `output/agent/llm_bundle.json`, it must:
 
 ## Authoring Strategy
 
-The repository does not yet have a full agent-backed transform authoring runtime in mainline code, so v1 uses deterministic heuristics:
+`prepare-llm-bundle` should use the same agent-facing transform authoring model the rest of the workflow expects:
 
 1. Always author at least one explicit root decision.
-2. Infer `HStack`, `VStack`, `ZStack`, and `ScrollView` from normalized child bounds.
-3. Preserve children with `child_policy.mode = "keep"` for authored layout decisions.
-4. Never overwrite a non-empty user-authored plan with heuristics.
+2. Pass grounded pre-layout, normalized-node, screenshot, and skill-doc context into the selected generation provider.
+3. Preserve children with `child_policy.mode = "keep"` unless the authored plan explicitly says otherwise.
+4. Never overwrite a non-empty user-authored plan with generated output.
 5. Fail on invalid non-empty plans instead of silently replacing them.
 
 ## Why Here

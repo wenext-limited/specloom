@@ -97,6 +97,9 @@ fn generate_ui_subcommand_bootstraps_global_config_template_when_missing() {
     assert!(config_contents.contains("[auth]"));
     assert!(config_contents.contains("# figma_token = \"...\""));
     assert!(config_contents.contains("# anthropic_api_key = \"...\""));
+    assert!(config_contents.contains("[generation]"));
+    assert!(config_contents.contains("# default_provider = \"anthropic\""));
+    assert!(config_contents.contains("# default_model = \"claude-3-5-sonnet-latest\""));
 
     let _ = std::fs::remove_dir_all(&workspace_root);
     let _ = std::fs::remove_dir_all(&home_root);
@@ -661,6 +664,8 @@ fn prepare_llm_bundle_subcommand_writes_bundle_path() {
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -703,6 +708,8 @@ fn generate_ui_subcommand_reports_generated_artifact_paths() {
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -711,6 +718,7 @@ fn generate_ui_subcommand_reports_generated_artifact_paths() {
     let output = specloom_command()
         .current_dir(workspace_root.as_path())
         .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .args(["--provider", "mock"])
         .output()
         .unwrap();
 
@@ -754,6 +762,8 @@ fn generate_ui_subcommand_rejects_anthropic_without_api_key() {
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -803,6 +813,8 @@ fn generate_ui_subcommand_prints_progress_in_text_mode() {
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -810,7 +822,13 @@ fn generate_ui_subcommand_prints_progress_in_text_mode() {
 
     let output = specloom_command()
         .current_dir(workspace_root.as_path())
-        .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .args([
+            "generate-ui",
+            "--bundle",
+            "output/agent/llm_bundle.json",
+            "--provider",
+            "mock",
+        ])
         .output()
         .unwrap();
 
@@ -829,6 +847,61 @@ fn generate_ui_subcommand_prints_progress_in_text_mode() {
 }
 
 #[test]
+fn prepare_llm_bundle_subcommand_uses_generation_defaults_from_global_config() {
+    let workspace_root = unique_cli_workspace_root(
+        "prepare_llm_bundle_subcommand_uses_generation_defaults_from_global_config",
+    );
+    let home_root = unique_cli_workspace_root("specloom-config-home-for-prepare-defaults");
+    seed_global_specloom_config(
+        home_root.as_path(),
+        r#"[auth]
+anthropic_api_key = "config-anthropic-key"
+
+[generation]
+default_provider = "anthropic"
+default_model = "claude-3-5-sonnet-latest"
+"#,
+    );
+    seed_bundle_instruction_sources(workspace_root.as_path());
+
+    let generate = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .args(["generate", "--input", "fixture"])
+        .output()
+        .unwrap();
+    assert!(generate.status.success());
+
+    let output = specloom_command()
+        .current_dir(workspace_root.as_path())
+        .env("HOME", home_root.as_path())
+        .env_remove("ANTHROPIC_API_KEY")
+        .args([
+            "prepare-llm-bundle",
+            "--figma-url",
+            "https://www.figma.com/design/abc/Login?node-id=1-2",
+            "--target",
+            "react-tailwind",
+            "--intent",
+            "Generate login screen code",
+            "--api-base-url",
+            "http://127.0.0.1:9",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stdout.contains("pipeline=prepare-llm-bundle provider=anthropic"));
+    assert!(stdout.contains("model=claude-3-5-sonnet-latest"));
+    assert!(stderr.contains("transform authoring failed"));
+    assert!(!stderr.contains("anthropic provider missing required value(s)"));
+
+    let _ = std::fs::remove_dir_all(&workspace_root);
+    let _ = std::fs::remove_dir_all(&home_root);
+}
+
+#[test]
 fn generate_ui_subcommand_uses_anthropic_api_key_from_global_config() {
     let workspace_root =
         unique_cli_workspace_root("generate_ui_subcommand_uses_anthropic_api_key_from_config");
@@ -837,6 +910,10 @@ fn generate_ui_subcommand_uses_anthropic_api_key_from_global_config() {
         home_root.as_path(),
         r#"[auth]
 anthropic_api_key = "config-anthropic-key"
+
+[generation]
+default_provider = "anthropic"
+default_model = "claude-3-5-sonnet-latest"
 "#,
     );
     seed_bundle_instruction_sources(workspace_root.as_path());
@@ -858,6 +935,8 @@ anthropic_api_key = "config-anthropic-key"
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -871,10 +950,6 @@ anthropic_api_key = "config-anthropic-key"
             "generate-ui",
             "--bundle",
             "output/agent/llm_bundle.json",
-            "--provider",
-            "anthropic",
-            "--model",
-            "claude-3-5-sonnet-latest",
             "--api-base-url",
             "http://127.0.0.1:9",
         ])
@@ -882,7 +957,10 @@ anthropic_api_key = "config-anthropic-key"
         .unwrap();
 
     assert_eq!(output.status.code(), Some(2));
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stdout.contains("pipeline=generate-ui provider=anthropic"));
+    assert!(stdout.contains("model=claude-3-5-sonnet-latest"));
     assert!(stderr.contains("agent runner error:"));
     assert!(stderr.contains("anthropic generation failed"));
     assert!(!stderr.contains("anthropic provider missing required value(s)"));

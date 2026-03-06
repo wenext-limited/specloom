@@ -14,7 +14,9 @@ This playbook defines how generation agents should use repository tooling in v1.
 2. Build bundle: `specloom prepare-llm-bundle --figma-url "<FIGMA_URL>" --target <TARGET> --intent "<INTENT>"`.
 3. Generate UI: `specloom generate-ui --bundle output/agent/llm_bundle.json`.
 
-`prepare-llm-bundle` is responsible for transform readiness. It must not package a stale or empty semantic transform state; when `transform_plan.json` is missing or empty, it authors a non-empty plan, then refreshes `build-spec` and `build-agent-context` before writing the bundle.
+`prepare-llm-bundle` is responsible for transform readiness. It must not package a stale or empty semantic transform state; when `transform_plan.json` is missing or empty, it uses the selected generation provider to author a non-empty plan, then refreshes `build-spec` and `build-agent-context` before writing the bundle.
+
+By default, the CLI resolves generation through Anthropic. Operators can set `[generation] default_provider` and `[generation] default_model` in `~/.config/specloom/config.toml` to avoid repeating flags.
 
 Expected outputs:
 

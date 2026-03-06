@@ -4,7 +4,7 @@
 
 **Goal:** Make `prepare-llm-bundle` guarantee a non-empty, applied transform plan before it writes the bundle.
 
-**Architecture:** Add a transform-readiness step inside core bundle preparation. Reuse existing authored plans when valid, heuristically author a plan when the current one is missing or empty, then refresh `build-spec` and `build-agent-context` before bundling.
+**Architecture:** Add a transform-readiness step inside core bundle preparation. Reuse existing authored plans when valid, use the selected LLM provider to author a plan when the current one is missing or empty, then refresh `build-spec` and `build-agent-context` before bundling.
 
 **Tech Stack:** Rust 2024 workspace, `specloom-core`, existing `ui_spec` transform contracts, CLI/core tests.
 
@@ -45,7 +45,7 @@ Run the same targeted tests again.
 Implement helpers to:
 
 1. Read optional transform plans.
-2. Author a non-empty heuristic plan when missing/empty.
+2. Author a non-empty provider-backed plan when missing/empty.
 3. Re-run `build-spec`.
 4. Re-run `build-agent-context`.
 

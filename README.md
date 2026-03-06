@@ -51,10 +51,12 @@ specloom prepare-llm-bundle --figma-url "https://www.figma.com/design/<FILE_KEY>
 # 3) Generate target UI from the prepared bundle
 specloom generate-ui --bundle output/agent/llm_bundle.json
 
-# 3b) Generate with Anthropic Claude (first-class provider support)
+# 3b) Generate with Anthropic Claude (default provider)
 export ANTHROPIC_API_KEY="<your_api_key>"
-specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest
+specloom generate-ui --bundle output/agent/llm_bundle.json --model claude-3-5-sonnet-latest
 ```
+
+`prepare-llm-bundle` is the transform-readiness gate. If `transform_plan.json` is missing or empty, it calls the configured generation provider to author a non-empty plan, validates it, then refreshes `build-spec` and `build-agent-context` before bundling.
 
 `prepare-llm-bundle` resolves instruction docs in this order:
 1. local project files (`.codex/SKILLS.md`, `docs/agent-playbook.md`, `docs/figma-ui-coder.md`, and referenced skill docs)
@@ -74,6 +76,10 @@ Example:
 [auth]
 figma_token = "..."
 anthropic_api_key = "..."
+
+[generation]
+default_provider = "anthropic"
+default_model = "claude-3-5-sonnet-latest"
 ```
 
 Security note: this file is plain text. Never commit or upload it.

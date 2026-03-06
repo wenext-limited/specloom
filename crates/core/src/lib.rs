@@ -284,6 +284,10 @@ pub struct PrepareLlmBundleRequest {
     pub figma_url: String,
     pub target: String,
     pub intent: String,
+    pub provider: GenerateUiProvider,
+    pub model: Option<String>,
+    pub api_key: Option<String>,
+    pub api_base_url: Option<String>,
 }
 
 pub fn prepare_llm_bundle(request: &PrepareLlmBundleRequest) -> Result<String, PipelineError> {
@@ -304,7 +308,12 @@ fn prepare_llm_bundle_in_workspace_with_instruction_overrides(
     remote_base_url_override: Option<&str>,
     config_root_override: Option<&Path>,
 ) -> Result<String, PipelineError> {
-    ensure_transform_plan_ready_for_bundle(workspace_root)?;
+    let instructions = build_bundle_instructions_with_remote_base_url(
+        workspace_root,
+        remote_base_url_override,
+        config_root_override,
+    )?;
+    ensure_transform_plan_ready_for_bundle(workspace_root, request, &instructions)?;
 
     let snapshot = read_required_json::<figma_client::RawFigmaSnapshot>(
         workspace_root,
@@ -315,11 +324,6 @@ fn prepare_llm_bundle_in_workspace_with_instruction_overrides(
         AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH,
     )?;
 
-    let instructions = build_bundle_instructions_with_remote_base_url(
-        workspace_root,
-        remote_base_url_override,
-        config_root_override,
-    )?;
     let bundle = LlmBundle {
         version: LLM_BUNDLE_VERSION.to_string(),
         request: BundleRequest {
@@ -840,8 +844,13 @@ fn generate_transform_plan(
     Ok(ui_spec::TransformPlan::default())
 }
 
-fn ensure_transform_plan_ready_for_bundle(workspace_root: &Path) -> Result<(), PipelineError> {
-    let pre_layout = read_required_ron::<ui_spec::UiSpec>(workspace_root, PRE_LAYOUT_ARTIFACT_RELATIVE_PATH)?;
+fn ensure_transform_plan_ready_for_bundle(
+    workspace_root: &Path,
+    request: &PrepareLlmBundleRequest,
+    instructions: &BundleInstructions,
+) -> Result<(), PipelineError> {
+    let pre_layout =
+        read_required_ron::<ui_spec::UiSpec>(workspace_root, PRE_LAYOUT_ARTIFACT_RELATIVE_PATH)?;
     let existing_plan = read_optional_transform_plan(workspace_root)?;
     let transform_plan = match existing_plan {
         Some(plan) if !plan.decisions.is_empty() => {
@@ -854,7 +863,8 @@ fn ensure_transform_plan_ready_for_bundle(workspace_root: &Path) -> Result<(), P
                 workspace_root,
                 NORMALIZED_ARTIFACT_RELATIVE_PATH,
             )?;
-            let authored = author_transform_plan(&pre_layout, &normalized);
+            let authored =
+                author_transform_plan(workspace_root, request, instructions, &pre_layout, &normalized)?;
             authored
                 .validate_against_pre_layout(&pre_layout)
                 .map_err(transform_plan_validation_error)?;
@@ -892,6 +902,55 @@ fn read_optional_transform_plan(
 }
 
 fn author_transform_plan(
+    workspace_root: &Path,
+    request: &PrepareLlmBundleRequest,
+    instructions: &BundleInstructions,
+    pre_layout: &ui_spec::UiSpec,
+    normalized: &figma_client::normalizer::NormalizationOutput,
+) -> Result<ui_spec::TransformPlan, PipelineError> {
+    match request.provider {
+        GenerateUiProvider::Mock => Ok(author_transform_plan_heuristically(pre_layout, normalized)),
+        GenerateUiProvider::Anthropic => {
+            let api_key = resolve_anthropic_api_key(request.api_key.as_deref()).ok_or_else(|| {
+                PipelineError::AgentRunner(
+                    "anthropic provider missing required value(s): ANTHROPIC_API_KEY (or --api-key). Provide the missing value(s) and retry.".to_string(),
+                )
+            })?;
+            let model = normalize_optional_field(request.model.as_deref())
+                .unwrap_or_else(|| "claude-3-5-sonnet-latest".to_string());
+            let prompt = build_transform_plan_authoring_prompt(
+                workspace_root,
+                request,
+                instructions,
+                pre_layout,
+                normalized,
+            )?;
+            let response = agent_runner::run_anthropic_text_completion(
+                &AnthropicRunnerConfig {
+                    api_key,
+                    model,
+                    api_base_url: normalize_optional_field(request.api_base_url.as_deref()),
+                },
+                "You author Specloom transform plans. Return valid transform_plan.json only, with no markdown fences or commentary.",
+                prompt.as_str(),
+            )
+            .map_err(|err| {
+                PipelineError::AgentRunner(format!("transform authoring failed: {err}"))
+            })?;
+            let decoded = serde_json::from_str::<ui_spec::TransformPlan>(
+                agent_runner::strip_markdown_fences(response.as_str()).as_str(),
+            )
+            .map_err(|err| {
+                PipelineError::AgentRunner(format!(
+                    "transform authoring returned invalid JSON: {err}"
+                ))
+            })?;
+            Ok(decoded)
+        }
+    }
+}
+
+fn author_transform_plan_heuristically(
     pre_layout: &ui_spec::UiSpec,
     normalized: &figma_client::normalizer::NormalizationOutput,
 ) -> ui_spec::TransformPlan {
@@ -917,6 +976,120 @@ fn author_transform_plan(
         version: ui_spec::TRANSFORM_PLAN_VERSION.to_string(),
         decisions,
     }
+}
+
+fn build_transform_plan_authoring_prompt(
+    workspace_root: &Path,
+    request: &PrepareLlmBundleRequest,
+    instructions: &BundleInstructions,
+    pre_layout: &ui_spec::UiSpec,
+    normalized: &figma_client::normalizer::NormalizationOutput,
+) -> Result<String, PipelineError> {
+    let pre_layout_ron = pre_layout
+        .to_pretty_ron()
+        .map_err(|err| PipelineError::Serialization(err.to_string()))?;
+    let node_summary = build_transform_authoring_node_summary(normalized)
+        .map_err(serialization_error)?;
+    let node_summary_json =
+        serde_json::to_string_pretty(&node_summary).map_err(serialization_error)?;
+    let root_screenshot_note = build_root_screenshot_note(workspace_root)?;
+
+    let authoring_skill = instructions
+        .skill_docs
+        .iter()
+        .find(|doc| doc.name == "authoring-transform-plan")
+        .map(|doc| doc.markdown.as_str())
+        .unwrap_or_default();
+    let node_grounding_skill = instructions
+        .skill_docs
+        .iter()
+        .find(|doc| doc.name == "node-grounding-for-transform")
+        .map(|doc| doc.markdown.as_str())
+        .unwrap_or_default();
+
+    Ok(format!(
+        "Author output/specs/transform_plan.json for Specloom.\n\
+Return JSON only matching the exact transform plan contract.\n\
+Do not return markdown fences.\n\
+You must produce at least one decision, usually for the root semantic container.\n\
+If uncertain, preserve structure with child_policy.keep instead of dropping nodes.\n\
+\n\
+Intent: {intent}\n\
+Target: {target}\n\
+Source URL: {figma_url}\n\
+\n\
+Root screenshot note:\n{root_screenshot_note}\n\
+\n\
+Relevant workflow docs:\n\
+--- agent-playbook ---\n{agent_playbook}\n\
+--- figma-ui-coder ---\n{figma_ui_coder}\n\
+--- authoring-transform-plan skill ---\n{authoring_skill}\n\
+--- node-grounding-for-transform skill ---\n{node_grounding_skill}\n\
+\n\
+Pre-layout RON:\n{pre_layout_ron}\n\
+\n\
+Normalized node summary JSON:\n{node_summary_json}\n",
+        intent = request.intent,
+        target = request.target,
+        figma_url = request.figma_url,
+        root_screenshot_note = root_screenshot_note,
+        agent_playbook = instructions.agent_playbook_markdown,
+        figma_ui_coder = instructions.figma_ui_coder_markdown,
+        authoring_skill = authoring_skill,
+        node_grounding_skill = node_grounding_skill,
+        pre_layout_ron = pre_layout_ron,
+        node_summary_json = node_summary_json,
+    ))
+}
+
+fn build_transform_authoring_node_summary(
+    normalized: &figma_client::normalizer::NormalizationOutput,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let nodes = normalized
+        .document
+        .nodes
+        .iter()
+        .map(|node| {
+            Ok(serde_json::json!({
+                "id": node.id,
+                "parent_id": node.parent_id,
+                "name": node.name,
+                "kind": serde_json::to_value(&node.kind)?,
+                "visible": node.visible,
+                "bounds": serde_json::to_value(&node.bounds)?,
+                "children": node.children,
+                "has_image_fill": node.style.fills.iter().any(|fill| fill.image_ref.is_some()),
+            }))
+        })
+        .collect::<Result<Vec<_>, serde_json::Error>>()?;
+
+    Ok(serde_json::json!({
+        "source": {
+            "file_key": normalized.document.source.file_key,
+            "root_node_id": normalized.document.source.root_node_id,
+            "figma_api_version": normalized.document.source.figma_api_version,
+        },
+        "nodes": nodes,
+    }))
+}
+
+fn build_root_screenshot_note(workspace_root: &Path) -> Result<String, PipelineError> {
+    let context = read_required_json::<agent_context::AgentContext>(
+        workspace_root,
+        AGENT_CONTEXT_ARTIFACT_RELATIVE_PATH,
+    )?;
+    let screenshot_path = workspace_root.join(context.screen.root_screenshot_ref.as_str());
+    if screenshot_path.is_file() {
+        return Ok(format!(
+            "Root screenshot artifact is available at {}.",
+            context.screen.root_screenshot_ref
+        ));
+    }
+
+    Ok(format!(
+        "Root screenshot artifact is not available; expected {} if previously fetched.",
+        context.screen.root_screenshot_ref
+    ))
 }
 
 fn collect_transform_decisions(

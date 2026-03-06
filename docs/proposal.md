@@ -94,7 +94,7 @@ Behavior:
 Important current boundary:
 
 1. `build-spec` does **not** directly invoke an LLM in mainline code.
-2. `prepare-llm-bundle` now acts as the transform-readiness gate: it reuses a valid non-empty `transform_plan.json`, or authors a non-empty plan heuristically, then refreshes `build-spec` + `build-agent-context` before bundling.
+2. `prepare-llm-bundle` now acts as the transform-readiness gate: it reuses a valid non-empty `transform_plan.json`, or calls the configured generation provider to author a non-empty plan, then refreshes `build-spec` + `build-agent-context` before bundling.
 
 ### `build-agent-context`
 

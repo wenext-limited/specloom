@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 const SPECLOOM_CONFIG_HOME_RELATIVE_PATH: &str = ".config/specloom";
 const SPECLOOM_CONFIG_FILE_NAME: &str = "config.toml";
-const DEFAULT_SPECLOOM_CONFIG_TEMPLATE: &str = "# Specloom global config\n[auth]\n# figma_token = \"...\"\n# anthropic_api_key = \"...\"\n";
+const DEFAULT_SPECLOOM_CONFIG_TEMPLATE: &str = "# Specloom global config\n[auth]\n# figma_token = \"...\"\n# anthropic_api_key = \"...\"\n\n[generation]\n# default_provider = \"anthropic\"\n# default_model = \"claude-3-5-sonnet-latest\"\n";
 
 #[derive(Debug, Parser)]
 #[command(name = "specloom")]
@@ -14,7 +14,7 @@ const DEFAULT_SPECLOOM_CONFIG_TEMPLATE: &str = "# Specloom global config\n[auth]
     long_about = "Run deterministic pipeline stages for Figma snapshot processing, spec building, and agent lookup context."
 )]
 #[command(
-    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom prepare-llm-bundle --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\" --target react-tailwind --intent \"Generate login\"\n  specloom generate-ui --bundle output/agent/llm_bundle.json\n  specloom generate-ui --bundle output/agent/llm_bundle.json --provider anthropic --model claude-3-5-sonnet-latest\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
+    after_long_help = "Examples:\n  specloom generate --input fixture\n  specloom generate --input live --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\"\n  specloom prepare-llm-bundle --figma-url \"https://www.figma.com/design/<FILE_KEY>/<PAGE>?node-id=<NODE_ID>\" --target react-tailwind --intent \"Generate login\"\n  specloom generate-ui --bundle output/agent/llm_bundle.json\n  specloom generate-ui --bundle output/agent/llm_bundle.json --model claude-3-5-sonnet-latest\n  specloom run-stage build-spec\n  specloom agent-tool find-nodes --query \"login button\" --output json"
 )]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -63,6 +63,18 @@ enum Command {
         /// Developer intent for generation behavior.
         #[arg(long)]
         intent: String,
+        /// Provider to use for transform-plan authoring.
+        #[arg(long, value_enum)]
+        provider: Option<GenerateUiProviderOption>,
+        /// Provider model identifier.
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider API key (for anthropic, falls back to `ANTHROPIC_API_KEY` and global config).
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Override anthropic API base URL (hidden; test use only).
+        #[arg(long, hide = true)]
+        api_base_url: Option<String>,
         /// Output format for command results.
         #[arg(long, value_enum, default_value_t = OutputMode::Text)]
         output: OutputMode,
@@ -73,8 +85,8 @@ enum Command {
         #[arg(long)]
         bundle: String,
         /// Provider to execute generation with.
-        #[arg(long, value_enum, default_value_t = GenerateUiProviderOption::Mock)]
-        provider: GenerateUiProviderOption,
+        #[arg(long, value_enum)]
+        provider: Option<GenerateUiProviderOption>,
         /// Provider model identifier (default for anthropic: `claude-3-5-sonnet-latest`).
         #[arg(long)]
         model: Option<String>,
@@ -233,6 +245,7 @@ struct ParsedFigmaQuickLink {
 #[serde(deny_unknown_fields)]
 struct SpecloomConfig {
     auth: Option<SpecloomAuthConfig>,
+    generation: Option<SpecloomGenerationConfig>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -240,6 +253,20 @@ struct SpecloomConfig {
 struct SpecloomAuthConfig {
     figma_token: Option<String>,
     anthropic_api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecloomGenerationConfig {
+    default_provider: Option<ConfigGenerationProvider>,
+    default_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ConfigGenerationProvider {
+    Mock,
+    Anthropic,
 }
 
 impl SpecloomConfig {
@@ -253,6 +280,22 @@ impl SpecloomConfig {
         self.auth
             .as_ref()
             .and_then(|auth| normalize_optional_field(auth.anthropic_api_key.as_deref()))
+    }
+
+    fn default_generation_provider(&self) -> Option<GenerateUiProviderOption> {
+        self.generation
+            .as_ref()
+            .and_then(|generation| generation.default_provider)
+            .map(|provider| match provider {
+                ConfigGenerationProvider::Mock => GenerateUiProviderOption::Mock,
+                ConfigGenerationProvider::Anthropic => GenerateUiProviderOption::Anthropic,
+            })
+    }
+
+    fn default_generation_model(&self) -> Option<String> {
+        self.generation
+            .as_ref()
+            .and_then(|generation| normalize_optional_field(generation.default_model.as_deref()))
     }
 }
 
@@ -391,16 +434,63 @@ fn main() {
                 figma_url,
                 target,
                 intent,
+                provider,
+                model,
+                api_key,
+                api_base_url,
                 output,
             } => {
+                if matches!(output, OutputMode::Text) {
+                    println!("[1/3] RUN  step=load-config");
+                }
+                let config = load_specloom_config_or_exit(output);
+                let resolved_provider = resolve_generation_provider(provider, &config);
+                let resolved_model = resolve_generation_model(model.as_deref(), &config);
+                if matches!(output, OutputMode::Text) {
+                    println!("[1/3] DONE step=load-config");
+                    println!(
+                        "pipeline=prepare-llm-bundle provider={} target={}",
+                        generate_ui_provider_label(resolved_provider),
+                        target
+                    );
+                    println!(
+                        "[2/3] RUN  step=prepare-request provider={} model={}",
+                        generate_ui_provider_label(resolved_provider),
+                        resolved_model
+                            .clone()
+                            .unwrap_or_else(|| default_generation_model(resolved_provider).to_string())
+                    );
+                }
                 let request = core::PrepareLlmBundleRequest {
                     figma_url,
                     target,
                     intent,
+                    provider: match resolved_provider {
+                        GenerateUiProviderOption::Mock => core::GenerateUiProvider::Mock,
+                        GenerateUiProviderOption::Anthropic => core::GenerateUiProvider::Anthropic,
+                    },
+                    model: resolved_model,
+                    api_key: normalize_optional_field(api_key.as_deref())
+                        .or_else(anthropic_api_key_from_env)
+                        .or_else(|| config.anthropic_api_key()),
+                    api_base_url: normalize_optional_field(api_base_url.as_deref()),
                 };
+                if matches!(output, OutputMode::Text) {
+                    println!(
+                        "[2/3] DONE step=prepare-request provider={} model={}",
+                        generate_ui_provider_label(resolved_provider),
+                        request.model.as_deref().unwrap_or(default_generation_model(resolved_provider))
+                    );
+                    println!(
+                        "[3/3] RUN  step=prepare-bundle provider={} target={}",
+                        generate_ui_provider_label(resolved_provider),
+                        request.target
+                    );
+                }
                 match core::prepare_llm_bundle(&request) {
                     Ok(artifact_path) => match output {
                         OutputMode::Text => {
+                            println!("[3/3] DONE step=prepare-bundle artifact={artifact_path}");
                             println!(
                                 "stage=prepare-llm-bundle output=output/agent artifact={artifact_path}"
                             );
@@ -412,7 +502,16 @@ fn main() {
                             );
                         }
                     },
-                    Err(err) => emit_error_and_exit(err, output),
+                    Err(err) => {
+                        if matches!(output, OutputMode::Text) {
+                            println!(
+                                "[3/3] FAIL step=prepare-bundle provider={} target={}",
+                                generate_ui_provider_label(resolved_provider),
+                                request.target
+                            );
+                        }
+                        emit_error_and_exit(err, output)
+                    }
                 }
             }
             Command::GenerateUi {
@@ -423,31 +522,34 @@ fn main() {
                 api_base_url,
                 output,
             } => {
+                let config = load_specloom_config_or_exit(output);
+                let resolved_provider = resolve_generation_provider(provider, &config);
+                let resolved_model = resolve_generation_model(model.as_deref(), &config);
                 if matches!(output, OutputMode::Text) {
                     println!(
                         "pipeline=generate-ui provider={} bundle={}",
-                        generate_ui_provider_label(provider),
+                        generate_ui_provider_label(resolved_provider),
                         bundle
                     );
                     println!("[1/3] RUN  step=load-config");
                 }
-                let config = load_specloom_config_or_exit(output);
                 if matches!(output, OutputMode::Text) {
                     println!("[1/3] DONE step=load-config");
                     println!(
                         "[2/3] RUN  step=prepare-request provider={} model={}",
-                        generate_ui_provider_label(provider),
-                        normalize_optional_field(model.as_deref())
-                            .unwrap_or_else(|| default_generate_ui_model(provider).to_string())
+                        generate_ui_provider_label(resolved_provider),
+                        resolved_model
+                            .clone()
+                            .unwrap_or_else(|| default_generation_model(resolved_provider).to_string())
                     );
                 }
                 let request = core::GenerateUiRequest {
                     bundle_path: bundle,
-                    provider: match provider {
+                    provider: match resolved_provider {
                         GenerateUiProviderOption::Mock => core::GenerateUiProvider::Mock,
                         GenerateUiProviderOption::Anthropic => core::GenerateUiProvider::Anthropic,
                     },
-                    model: normalize_optional_field(model.as_deref()),
+                    model: resolved_model,
                     api_key: normalize_optional_field(api_key.as_deref())
                         .or_else(anthropic_api_key_from_env)
                         .or_else(|| config.anthropic_api_key()),
@@ -456,12 +558,12 @@ fn main() {
                 if matches!(output, OutputMode::Text) {
                     println!(
                         "[2/3] DONE step=prepare-request provider={} model={}",
-                        generate_ui_provider_label(provider),
-                        request.model.as_deref().unwrap_or(default_generate_ui_model(provider))
+                        generate_ui_provider_label(resolved_provider),
+                        request.model.as_deref().unwrap_or(default_generation_model(resolved_provider))
                     );
                     println!(
                         "[3/3] RUN  step=execute-generation provider={} bundle={}",
-                        generate_ui_provider_label(provider),
+                        generate_ui_provider_label(resolved_provider),
                         request.bundle_path
                     );
                 }
@@ -494,7 +596,7 @@ fn main() {
                         if matches!(output, OutputMode::Text) {
                             println!(
                                 "[3/3] FAIL step=execute-generation provider={} bundle={}",
-                                generate_ui_provider_label(provider),
+                                generate_ui_provider_label(resolved_provider),
                                 request.bundle_path
                             );
                         }
@@ -862,11 +964,24 @@ fn generate_ui_provider_label(provider: GenerateUiProviderOption) -> &'static st
     }
 }
 
-fn default_generate_ui_model(provider: GenerateUiProviderOption) -> &'static str {
+fn default_generation_model(provider: GenerateUiProviderOption) -> &'static str {
     match provider {
         GenerateUiProviderOption::Mock => "mock-default",
         GenerateUiProviderOption::Anthropic => "claude-3-5-sonnet-latest",
     }
+}
+
+fn resolve_generation_provider(
+    provider: Option<GenerateUiProviderOption>,
+    config: &SpecloomConfig,
+) -> GenerateUiProviderOption {
+    provider
+        .or_else(|| config.default_generation_provider())
+        .unwrap_or(GenerateUiProviderOption::Anthropic)
+}
+
+fn resolve_generation_model(model: Option<&str>, config: &SpecloomConfig) -> Option<String> {
+    normalize_optional_field(model).or_else(|| config.default_generation_model())
 }
 
 fn normalize_optional_field(value: Option<&str>) -> Option<String> {

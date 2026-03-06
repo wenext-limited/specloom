@@ -28,6 +28,8 @@ fn fixture_agent_workflow_writes_bundle_generated_ui_and_reports() {
             "react-tailwind",
             "--intent",
             "Generate login screen code",
+            "--provider",
+            "mock",
         ])
         .output()
         .unwrap();
@@ -39,7 +41,13 @@ fn fixture_agent_workflow_writes_bundle_generated_ui_and_reports() {
 
     let generate_ui = specloom_command()
         .current_dir(workspace_root.as_path())
-        .args(["generate-ui", "--bundle", "output/agent/llm_bundle.json"])
+        .args([
+            "generate-ui",
+            "--bundle",
+            "output/agent/llm_bundle.json",
+            "--provider",
+            "mock",
+        ])
         .output()
         .unwrap();
     assert!(

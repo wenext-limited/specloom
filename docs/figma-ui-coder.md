@@ -141,6 +141,7 @@ specloom generate-ui --bundle output/agent/llm_bundle.json
 ```
 
 `prepare-llm-bundle` is the workflow gate for transform readiness. If `transform_plan.json` is missing or empty, it must author a non-empty plan and refresh downstream transformed artifacts before the bundle is created.
+It does this by calling the selected generation provider, not by inventing local fallback semantics during the bundle step.
 
 ## Guardrails
 
